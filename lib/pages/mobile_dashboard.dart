@@ -1,17 +1,16 @@
+import 'package:bahanap_admin_application/pages/mobile_dashboard.dart';
+import 'package:bahanap_admin_application/pages/rescuers.dart';
 import 'package:bahanap_admin_application/pages/users.dart';
 import 'package:flutter/material.dart';
-
 import 'map.dart';
-import 'mobile_dashboard.dart';
-import 'rescuers.dart';
-
-class OperationsPage extends StatefulWidget {
-  const OperationsPage({super.key});
+import 'operations.dart';
+class MobileDashboardPage extends StatefulWidget {
+  const MobileDashboardPage({super.key});
   @override
-  _OperationsPageState createState() => _OperationsPageState();
+  _MobileDashboardPageState createState() => _MobileDashboardPageState();
 }
 
-class _OperationsPageState extends State<OperationsPage> {
+class _MobileDashboardPageState extends State<MobileDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +72,7 @@ class _OperationsPageState extends State<OperationsPage> {
                             );
                         },
                       child: Container(
-                       
+                        
                         width: MediaQuery.sizeOf(context).width * 0.24,
                         padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
                         
@@ -107,9 +106,7 @@ class _OperationsPageState extends State<OperationsPage> {
                         },
                         child: Container(
                         width: MediaQuery.sizeOf(context).width * 0.24,
-                        decoration: const BoxDecoration(
-                          color: Color(0xff2294C9),
-                        ),
+                        
                         padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
                         child: const Row(
                           children: [
@@ -209,7 +206,9 @@ class _OperationsPageState extends State<OperationsPage> {
                             );
                         },
                         child: Container(
-                          
+                          decoration: const BoxDecoration(
+                          color: Color(0xff2294C9),
+                        ),
                         width: MediaQuery.sizeOf(context).width * 0.24,
                         padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
                         child: const Row(
@@ -278,14 +277,13 @@ class _OperationsPageState extends State<OperationsPage> {
                 ),
               
               ),),
-
               Expanded(child: Column(
                 children: [
                   Container(
                     height: 100,
                     alignment: Alignment.centerLeft,
                     padding: const EdgeInsets.fromLTRB(40, 15, 15, 15),
-                    child: const Text("Operations",
+                    child: const Text("Mobile Dashboard",
                       style: TextStyle(
                         fontFamily: "SFPro",
                         fontSize: 43,
@@ -294,211 +292,9 @@ class _OperationsPageState extends State<OperationsPage> {
                     ),
                     ),
                   ),
-                  
-                  //add a list view here so the container above doesn't get affected
-                  Divider(),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.all(40),
-                      children: [
-                        Padding(
-                          padding: EdgeInsets.only(bottom: 12),
-                          child: const Text("Rescue Operations",
-                            style: TextStyle(
-                              fontFamily: "SFPro",
-                              fontSize: 33,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                          ),
-                        ),
-
-
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 550, // max width of each grid item
-                            mainAxisSpacing: 15,
-                            crossAxisSpacing: 15,
-                            mainAxisExtent: 150, // << fixed height in pixels!
-                          ),
-                          itemCount: 4, 
-                          itemBuilder: (context, i) {
-                            return Container(
-                              
-                              decoration: BoxDecoration(
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.grey.withValues(alpha: 0.5),
-                                    spreadRadius: 3,
-                                    blurRadius: 5,
-                                    offset: Offset(0, 3), // changes position of shadow
-                                  ),
-                                ],
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.only(right: 30),
-                                width: 600,
-                                child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.fromLTRB(30, 5, 0, 5),
-                                    
-                                    child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text("Address", style: TextStyle(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
-                                      ),),
-                                      Text("Coordinates", style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                      ),),
-                                      Text("Map View", style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0XFF2294C9),
-                                      ),),
-                                    ],
-                                  ),),
-                                  SizedBox(
-                                    width: 25,
-                                  ),
-                                  Spacer(),
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: ElevatedButton(
-                                    onPressed: () {
-
-                                    }, 
-                                    style: ButtonStyle(
-                                      backgroundColor: MaterialStateProperty.all(const Color(0XFF2294C9)),
-                                      elevation:  MaterialStateProperty.all(2),
-                                      padding: MaterialStateProperty.all(EdgeInsets.fromLTRB(50, 20, 50, 20)),
-                                      shape: WidgetStatePropertyAll(RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(5.0),
-                                      ),)
-                                    ),
-                                    child: const Text("Assign Rescuer", style: TextStyle(color: Colors.white),)
-                                  ),
-                                  )
-                                ],
-                              ),
-                              )
-                            );
-         
-                          }),
-
-                          SizedBox(
-                            height: 50,
-                          ),
-
-                          Padding(
-                          padding: EdgeInsets.only(bottom: 12),
-                          child: const Text("In Progress",
-                            style: TextStyle(
-                              fontFamily: "SFPro",
-                              fontSize: 33,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                          ),
-                        ),
-
-
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 550, // max width of each grid item
-                            mainAxisSpacing: 15,
-                            crossAxisSpacing: 15,
-                            mainAxisExtent: 150, // << fixed height in pixels!
-                          ),
-                          itemCount: 4, 
-                          itemBuilder: (context, i) {
-                            return Container(
-                              
-                              decoration: BoxDecoration(
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.grey.withValues(alpha: 0.5),
-                                    spreadRadius: 3,
-                                    blurRadius: 5,
-                                    offset: Offset(0, 3), // changes position of shadow
-                                  ),
-                                ],
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.only(right: 30),
-                                width: 600,
-                                child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.fromLTRB(30, 5, 0, 5),
-                                    
-                                    child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text("Address", style: TextStyle(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
-                                      ),),
-                                      Text("Coordinates", style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                      ),),
-                                      Text("Map View", style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0XFF2294C9),
-                                      ),),
-                                    ],
-                                  ),),
-                                  SizedBox(
-                                    width: 25,
-                                  ),
-                                  Spacer(),
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: ElevatedButton(
-                                    onPressed: () {
-
-                                    }, 
-                                    style: ButtonStyle(
-                                      backgroundColor: MaterialStateProperty.all(const Color(0XFF2294C9)),
-                                      elevation:  MaterialStateProperty.all(2),
-                                      padding: MaterialStateProperty.all(EdgeInsets.fromLTRB(50, 20, 50, 20)),
-                                      shape: WidgetStatePropertyAll(RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(5.0),
-                                      ),)
-                                    ),
-                                    child: const Text("Mark as Rescued", style: TextStyle(color: Colors.white),)
-                                  ),
-                                  )
-                                ],
-                              ),
-                              )
-                            );
-                            
-                            
-                            
-                            
-                          })
-                      ],
-                     
-                    ),
-                  ),
-                ],
+                ]
               ))
+                  
 
         ],
       )     

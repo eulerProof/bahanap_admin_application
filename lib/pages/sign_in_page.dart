@@ -37,15 +37,23 @@ class _SignInPageState extends State<SignInPage> {
                       ),),
                       Container(
                         width: 138,
-                        height: 27,
+                        padding: EdgeInsets.all(5),
                         decoration: BoxDecoration(
                           color: Color(0xff3d3d3d),
                           borderRadius: BorderRadius.circular(37),),
                           child: Center(
-                            child: const Text("Administrator", style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ))
+                            child:  Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.support_agent, size: 15, color: Colors.white,),
+                                SizedBox(width: 5,),
+                                const Text("Administrator", style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                ))
+                              ],
+                            )
                           ),
                       ),
                       Column(
