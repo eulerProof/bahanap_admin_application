@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "502267337175",
+    "firebase_url": "https://bahanap-cc206-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "bahanap-cc206",
+    "storage_bucket": "bahanap-cc206.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:502267337175:android:df62a7fc03fb9a3a191392",
+        "android_client_info": {
+          "package_name": "com.example.bahanap_admin_application"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBqBzsdrfXS595GFY6tHjQmSwxYLIi1s6M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:502267337175:android:eaaa3249149f5145191392",
+        "android_client_info": {
+          "package_name": "com.example.cc206_bahanap_2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBqBzsdrfXS595GFY6tHjQmSwxYLIi1s6M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

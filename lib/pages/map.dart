@@ -190,22 +190,28 @@ class _MapPageState extends State<MapPage> {
 
   Future<void> _searchLocation() async {
     String query = _searchController.text.trim();
-    if (query.isEmpty) {
-      _showErrorDialog('Please enter a valid address to search.');
-      return;
-    }
-    try {
-      List<Location> locations = await locationFromAddress(query);
-      if (locations.isEmpty) {
-        _showErrorDialog('No locations found for "$query".');
-      } else {
-        Location location = locations.first;
-        _mapController.move(
-            LatLng(location.latitude, location.longitude), 13.0);
+    if (query.isNotEmpty) {
+      try {
+        List<Location> locations = await locationFromAddress(query);
+
+        debugPrint("Geocoding result: $locations");
+
+        if (locations.isEmpty) {
+          _showErrorDialog('No locations found for "$query".');
+        } else {
+          Location location = locations.first;
+          debugPrint(
+              "Location found: ${location.latitude}, ${location.longitude}");
+
+          _mapController.move(
+              LatLng(location.latitude, location.longitude), 13.0);
+        }
+      } catch (e) {
+        debugPrint("Geocoding error: $e");
+        _showErrorDialog('Error: $e');
       }
-    } catch (e) {
-      print("Geocoding error: $e");
-      _showErrorDialog('Error occurred while searching: $e');
+    } else {
+      _showErrorDialog('Please enter a valid address to search.');
     }
   }
 

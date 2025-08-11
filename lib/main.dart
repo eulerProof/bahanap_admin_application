@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:bahanap_admin_application/pages/sign_in_page.dart';
 import 'package:bahanap_admin_application/pages/operations.dart';
-void main() {
-  runApp(const MainApp());
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  runApp(MainApp());
 }
 
 class MainApp extends StatelessWidget {
