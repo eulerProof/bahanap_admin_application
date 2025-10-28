@@ -2,7 +2,11 @@ import 'package:bahanap_admin_application/pages/mobile_dashboard.dart';
 import 'package:bahanap_admin_application/pages/rescuers.dart';
 import 'package:bahanap_admin_application/pages/users.dart';
 import 'package:flutter/material.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
 import 'map.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'operations.dart';
 class MobileDashboardPage extends StatefulWidget {
   const MobileDashboardPage({super.key});
@@ -11,7 +15,42 @@ class MobileDashboardPage extends StatefulWidget {
 }
 
 class _MobileDashboardPageState extends State<MobileDashboardPage> {
+  final TextEditingController _textController = TextEditingController();
+  final waterLevel = ["Low", "Middle", "High"];
+  String? value;
+  String _responseMessage = '';
+  DropdownMenuItem<String> buildMenuItem(String waterLev) => DropdownMenuItem(
+      value: waterLev,
+      child: Text(
+        waterLev,
+      ),
+    );
+    Future<void> _sendPostRequest() async {
+    try {
+      final response = await http.post(
+        Uri.parse('http://192.168.4.1/message'),
+        headers: <String, String>{
+          'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: jsonEncode(<String, String>{
+          'message': _textController.text,
+          'coordinates': _textController.text,
+        }),
+      );
 
+      setState(() {
+        if (response.statusCode == 200) {
+          _responseMessage = 'Message sent successfully!';
+        } else {
+          _responseMessage = 'Failed to send message. Status: ${response.statusCode}';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _responseMessage = 'Error: $e';
+      });
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -292,12 +331,106 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                     ),
                     ),
                   ),
+                  const Divider(),
+                  Container(
+                    alignment: Alignment.centerLeft,
+                    
+                    padding: const EdgeInsets.fromLTRB(40, 15, 15, 40),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                         const Text("Water Level",
+                        textAlign: TextAlign.left,
+                          style: TextStyle(
+                            fontFamily: "SFPro",
+                            fontSize: 33,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                        ),
+                        ),
+                        Container(
+                          width: 300,
+                          height: 50,
+                          padding: const EdgeInsets.fromLTRB(10, 0, 15, 0),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Colors.black,
+                              width: 1.0
+                            ),
+                            borderRadius: BorderRadius.circular(20.0)
+                          ),
+                        //   child: DropdownButtonHideUnderline(
+                        //     child: DropdownButton2<String>(
+                        //     isExpanded: true,
+                        //     iconStyleData: const IconStyleData(icon: Icon(Icons.keyboard_arrow_down_rounded), iconEnabledColor: Colors.black),
+                        //   value: value,
+                        //   items: waterLevel.map(buildMenuItem).toList(), 
+                        //   onChanged: (value) => setState(() =>
+                        //     this.value = value
+                        //   ),
+                        //   dropdownStyleData: const DropdownStyleData(
+                        //     direction: DropdownDirection.textDirection
+                        //   ),
+                      
+                        // ), 
+
+                        //   ) 
+                          child: TextField(
+                            controller: _textController,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(0, 20, 0, 0),
+                          alignment: Alignment.centerLeft,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(_responseMessage,
+                        textAlign: TextAlign.left,
+                          style: const TextStyle(
+                            fontFamily: "SFPro",
+                            fontSize: 33,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                        ),
+                        ),
+
+                        ElevatedButton(
+                          
+                          onPressed: _sendPostRequest, 
+                          child: const Text("Open",
+                            style: TextStyle(fontSize: 22),  
+                          )
+
+                        )
+                            ],
+                          ),
+                        ),
+                  
+                      ],
+                    ),
+                        )
+                      ],
+                    )
+                    
+                  
+                  ),
+                  
+
                 ]
               ))
                   
 
         ],
-      )     
+      )   
+        
     );
+
+    
   }
 }

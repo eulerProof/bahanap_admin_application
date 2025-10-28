@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:bahanap_admin_application/pages/mobile_dashboard.dart';
 import 'package:bahanap_admin_application/pages/rescuers.dart';
 import 'package:bahanap_admin_application/pages/users.dart';
@@ -11,6 +12,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'operations.dart';
+import 'package:network_info_plus/network_info_plus.dart';
+import 'package:http/http.dart' as http;
+
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -27,15 +31,18 @@ class _MapPageState extends State<MapPage> {
   Marker? _userMarker;
   final List<Marker> _markers = [];
   double _currentZoom = 13.0;
-
+  String _responseMessage = '';
   StreamSubscription<Position>? _positionStreamSubscription;
-
+  String _username = '';
+  double _latitude = 0;
+  double _longitude = 0;
   @override
   void initState() {
     super.initState();
     _initializeMarkers();
-    _fetchCurrentLocation();
-    _startLocationUpdates();
+    // _fetchCurrentLocation();
+    // _startLocationUpdates();
+    _fetchLocationFromModule();
   }
 
   @override
@@ -44,7 +51,10 @@ class _MapPageState extends State<MapPage> {
     _searchController.dispose();
     super.dispose();
   }
-
+  void refresh () async {
+    await _fetchLocationFromModule();
+    _initializeLorawanMarker();
+  }
   Future<void> _fetchCurrentLocation() async {
     try {
       Position position = await Geolocator.getCurrentPosition(
@@ -60,7 +70,79 @@ class _MapPageState extends State<MapPage> {
       _showErrorDialog('Unable to fetch current location.');
     }
   }
+  
+  Future<void> _fetchLocationFromModule() async {
+  try {
+    String esp32IP = "192.168.4.2";
+    final response = await http.get(Uri.parse('http://$esp32IP/lastmessage'));
 
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body); // Parse JSON
+
+      setState(() {
+        // Assign extracted fields to variables
+        _username = data["id"] ?? "Unknown";
+        _latitude = data["lat"]?.toDouble() ?? 0.0;
+        _longitude = data["lon"]?.toDouble() ?? 0.0;
+        _responseMessage = "✅ Data received successfully!";
+      });
+    } else {
+      setState(() {
+        _responseMessage =
+            'Failed to receive message. Status: ${response.statusCode}';
+      });
+    }
+  } catch (e) {
+    setState(() {
+      _responseMessage = 'Error: $e';
+    });
+  }
+}
+
+  void _initializeLorawanMarker() async {
+    try {
+      _markers.add(
+              Marker(
+                width: 100.0,
+                height: 100.0,
+                point: LatLng(_latitude, _longitude),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.red,
+                          width: 3.0,
+                        ),
+                      ),
+                      child: CircleAvatar(
+                        radius: 15,
+                        backgroundImage:
+                            const AssetImage('assets/images/dgfdfdsdsf2.jpg'),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _username,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12.0,
+                        fontFamily: 'SfPro',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        );
+      
+      setState(() {});
+    }
+    catch (e){
+      _responseMessage = "Error initializing markers: $e";
+    }
+  }
   void _initializeMarkers() async {
     _markers.clear();
     final String currentUserUid = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -475,7 +557,7 @@ class _MapPageState extends State<MapPage> {
                           width: 162,
                           child: ElevatedButton(
                             onPressed: () {
-                              // logout logic here
+                              refresh();
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0XFF2294C9),
@@ -565,6 +647,29 @@ class _MapPageState extends State<MapPage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      
+                        const SizedBox(
+                          width: 20,
+                        ),
+                      ElevatedButton(
+                        onPressed: (){
+                          refresh();
+                        },//Initialize marker 
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.all(15),
+                          backgroundColor: Colors.black,
+                          textStyle: const TextStyle(
+                            color: Colors.white
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10), // Rounded corners
+                            side: const BorderSide(color: Colors.blue, width: 0.2), // Border
+                          ),
+
+                        ),
+                        child: const Text("Refresh"),
+                        
+                      ),
                       IconButton(
                         icon: const Icon(Icons.zoom_in),
                         onPressed: () {

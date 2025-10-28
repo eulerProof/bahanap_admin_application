@@ -1,3 +1,7 @@
+
+import 'package:bahanap_admin_application/pages/map.dart';
+import 'package:bahanap_admin_application/pages/mobile_dashboard.dart';
+import 'package:bahanap_admin_application/pages/users.dart';
 import 'package:flutter/material.dart';
 import 'package:bahanap_admin_application/pages/sign_in_page.dart';
 import 'package:bahanap_admin_application/pages/operations.dart';
@@ -38,7 +42,7 @@ class MainApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const OperationsPage(),
+      home: const MapPage(),
     );
   }
 }

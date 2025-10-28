@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'map.dart';
 import 'mobile_dashboard.dart';
 import 'operations.dart';
@@ -13,6 +14,21 @@ class _UsersPageState extends State<UsersPage> {
 
   @override
   Widget build(BuildContext context) {
+    return StreamBuilder(
+      stream: FirebaseFirestore.instance.collection("profiles").snapshots(),  
+      builder: (context, snapshot) {
+                    if(snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(),
+                      );
+                    }
+                
+                    if (!snapshot.hasData) {
+                      return const Center(
+                        child: Text("No Data Received"),
+                      );
+                    }
+
     return Scaffold(
       backgroundColor: const Color(0x0032ade6),
       body: Row(
@@ -292,6 +308,89 @@ class _UsersPageState extends State<UsersPage> {
                     ),
                     ),
                   ),
+                  const Divider(),
+                  Expanded(child: ListView(
+                    children: [
+                      GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent:
+                                550, // max width of each grid item
+                            mainAxisSpacing: 15,
+                            crossAxisSpacing: 15,
+                            mainAxisExtent: 150, // << fixed height in pixels!
+                          ),
+                          itemCount: snapshot.data!.docs.length,
+                          itemBuilder: (context, int i) {
+                            final users = snapshot.data!.docs.toList();
+                            final user = users[i];
+                            final name = user['Name'] ?? "No Name Provided";
+                            final phoneNumber = user['PhoneNumber'] ?? "No Phone Number Provided";
+                            final coordinates = user['Coordinates'];
+
+                            return Container(
+                                decoration: BoxDecoration(
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.grey.withValues(alpha: 0.5),
+                                      spreadRadius: 3,
+                                      blurRadius: 5,
+                                      offset: Offset(
+                                          0, 3), // changes position of shadow
+                                    ),
+                                  ],
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.only(right: 30),
+                                  width: 600,
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.fromLTRB(
+                                            30, 5, 0, 5),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              "Name: " + name.toString().trim(),
+                                              style: TextStyle(
+                                                fontSize: 24,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            Text(
+                                              "Coordinates: " + coordinates.toString(),
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            Text(
+                                              "Phone NUmber: " + phoneNumber.toString(),
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0XFF2294C9),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      
+                                      
+                                    ],
+                                  ),
+                                ));
+                          })
+                    ],
+                  ))
                 ]
               ))
                   
@@ -299,5 +398,7 @@ class _UsersPageState extends State<UsersPage> {
         ],
       )     
     );
+    
+  });
   }
 }
