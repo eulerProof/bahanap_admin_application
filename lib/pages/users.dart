@@ -309,9 +309,14 @@ class _UsersPageState extends State<UsersPage> {
                     ),
                   ),
                   const Divider(),
-                  Expanded(child: ListView(
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                    child: ListView(
+                      clipBehavior: Clip.none,
                     children: [
                       GridView.builder(
+                          clipBehavior: Clip.none,
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           gridDelegate:
@@ -333,14 +338,13 @@ class _UsersPageState extends State<UsersPage> {
                             return Container(
                                 decoration: BoxDecoration(
                                   boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.grey.withValues(alpha: 0.5),
-                                      spreadRadius: 3,
-                                      blurRadius: 5,
-                                      offset: Offset(
-                                          0, 3), // changes position of shadow
-                                    ),
-                                  ],
+                                  BoxShadow(
+                                    color: Colors.grey.withValues(alpha: 0.5),
+                                    spreadRadius: 3,
+                                    blurRadius: 5,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(15),
                                 ),
@@ -359,25 +363,27 @@ class _UsersPageState extends State<UsersPage> {
                                               MainAxisAlignment.center,
                                           children: [
                                             Text(
-                                              "Name: " + name.toString().trim(),
+                                              name.toString().trim(),
                                               style: TextStyle(
                                                 fontSize: 24,
                                                 fontWeight: FontWeight.bold,
                                               ),
                                             ),
+                                            
                                             Text(
-                                              "Coordinates: " + coordinates.toString(),
+                                              "Phone Number: " + phoneNumber.toString(),
                                               style: TextStyle(
                                                 fontSize: 15,
-                                                fontWeight: FontWeight.bold,
+                                                
+                                                color: Color(0XFF2294C9),
                                               ),
                                             ),
                                             Text(
-                                              "Phone NUmber: " + phoneNumber.toString(),
+                                              "Citizen",
                                               style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                color: Color(0XFF2294C9),
+                                                fontSize: 15,
+                                               
+                                                color: Colors.grey,
                                               ),
                                             ),
                                           ],
@@ -390,7 +396,7 @@ class _UsersPageState extends State<UsersPage> {
                                 ));
                           })
                     ],
-                  ))
+                  )))
                 ]
               ))
                   

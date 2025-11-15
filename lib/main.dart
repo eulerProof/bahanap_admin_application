@@ -42,7 +42,7 @@ class MainApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const MapPage(),
+      home: const MobileDashboardPage(),
     );
   }
 }

@@ -19,7 +19,9 @@ class _OperationsPageState extends State<OperationsPage> {
 
   // 👇 This will hold your received JSON objects
   List<Map<String, dynamic>> receivedJSON = [];
-
+  final rescuers = [
+    "roberto", "John", "serg"
+  ];
   @override
   void initState() {
     super.initState();
@@ -63,6 +65,120 @@ class _OperationsPageState extends State<OperationsPage> {
     }
   }
 
+
+  Future<void> _assignRescuer(String rescuer, lat, lon) async {
+    try {
+      final payload = {
+        "latitude": lat,
+        "longitude": lon,
+        "uid": rescuer,
+      };
+      final esp32IP = "192.168.4.2";
+      // Send JSON to ESP32
+      final response = await http
+          .post(
+            Uri.parse('http://$esp32IP/message'),
+            headers: {
+              'Content-Type': 'application/json; charset=UTF-8',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 3));
+    } catch (e) {
+      
+    }
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Rescuer Assigned"),
+          content: Text("Rescuer: $rescuer\nRescuee Coordinates: $lat, $lon"),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // closes the alert
+              },
+              child: const Text("OK"),
+            ),
+          ],
+        );
+      },
+    );
+
+  }
+  Future<void> _selectRescuer(userlat, userlon) async {
+    final lat = userlat;
+    final lon = userlon;
+    showDialog(
+    context: context,
+    barrierDismissible: true,
+    barrierColor: Colors.black54,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (context, setState) {  
+          
+          return Dialog(
+            insetPadding: const EdgeInsets.all(20),
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.3,
+              height: MediaQuery.of(context).size.height * 0.7,
+              padding: const EdgeInsets.all(43),
+              child:Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Text(
+                          "Rescuers",
+                          style: TextStyle(
+                              fontSize: 24, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 10),
+                        Expanded(
+          child: ListView.builder(
+            itemCount: rescuers.length,
+            itemBuilder: (context, index) {
+              final rescuerName = rescuers[index];
+              
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Expanded ensures the name text stays left-aligned
+                    Expanded(
+                      child: Text(
+                        rescuerName,
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        _assignRescuer(rescuerName, lat, lon);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      ),
+                      child: const Text("Assign Rescuer"),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+
+                      ]
+              )
+
+            ),);
+        }
+      );
+    }
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -316,8 +432,7 @@ class _OperationsPageState extends State<OperationsPage> {
                            )),
                           )
                         ),
-                      )
-,
+                      ),
                       )
                       
                   ],
@@ -378,6 +493,8 @@ class _OperationsPageState extends State<OperationsPage> {
                             final item = receivedJSON[i];
                             final lat = item["lat"] ?? "Unknown";
                             final lon = item["lon"] ?? "Unknown";
+                            // final lat = "10.7380111";
+                            // final lon = "122.5621601";
                             var id = "";
                             if (id == "null") {
                               id = "No Username";
@@ -433,6 +550,7 @@ class _OperationsPageState extends State<OperationsPage> {
                                   ElevatedButton(
                                     onPressed: () {
                                       // Handle rescuer assignment here
+                                      _selectRescuer(lat, lon);
                                     },
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: const Color(0XFF2294C9),
