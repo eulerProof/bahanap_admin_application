@@ -1,4 +1,3 @@
-
 import 'package:bahanap_admin_application/pages/map.dart';
 import 'package:bahanap_admin_application/pages/mobile_dashboard.dart';
 import 'package:bahanap_admin_application/pages/received_json_provider.dart';
@@ -15,14 +14,14 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => ReceivedJSONProvider(),)
-      ],
-      child: MainApp(),
-      )  
-  );
+  runApp(MultiProvider(
+    providers: [
+      ChangeNotifierProvider(
+        create: (_) => ReceivedJSONProvider(),
+      )
+    ],
+    child: MainApp(),
+  ));
 }
 
 class MainApp extends StatelessWidget {
