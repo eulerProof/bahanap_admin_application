@@ -11,10 +11,10 @@ import 'package:geocoding/geocoding.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import 'package:bahanap_admin_application/pages/sidebar_navigation.dart';
 import 'operations.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:http/http.dart' as http;
-
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -51,10 +51,12 @@ class _MapPageState extends State<MapPage> {
     _searchController.dispose();
     super.dispose();
   }
-  void refresh () async {
+
+  void refresh() async {
     await _fetchLocationFromModule();
     _initializeLorawanMarker();
   }
+
   Future<void> _fetchCurrentLocation() async {
     try {
       Position position = await Geolocator.getCurrentPosition(
@@ -70,79 +72,79 @@ class _MapPageState extends State<MapPage> {
       _showErrorDialog('Unable to fetch current location.');
     }
   }
-  
+
   Future<void> _fetchLocationFromModule() async {
-  try {
-    String esp32IP = "192.168.4.2";
-    final response = await http.get(Uri.parse('http://$esp32IP/lastmessage'));
+    try {
+      String esp32IP = "192.168.4.2";
+      final response = await http.get(Uri.parse('http://$esp32IP/lastmessage'));
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body); // Parse JSON
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body); // Parse JSON
 
+        setState(() {
+          // Assign extracted fields to variables
+          _username = data["id"] ?? "Unknown";
+          _latitude = data["lat"]?.toDouble() ?? 0.0;
+          _longitude = data["lon"]?.toDouble() ?? 0.0;
+          _responseMessage = "✅ Data received successfully!";
+        });
+      } else {
+        setState(() {
+          _responseMessage =
+              'Failed to receive message. Status: ${response.statusCode}';
+        });
+      }
+    } catch (e) {
       setState(() {
-        // Assign extracted fields to variables
-        _username = data["id"] ?? "Unknown";
-        _latitude = data["lat"]?.toDouble() ?? 0.0;
-        _longitude = data["lon"]?.toDouble() ?? 0.0;
-        _responseMessage = "✅ Data received successfully!";
-      });
-    } else {
-      setState(() {
-        _responseMessage =
-            'Failed to receive message. Status: ${response.statusCode}';
+        _responseMessage = 'Error: $e';
       });
     }
-  } catch (e) {
-    setState(() {
-      _responseMessage = 'Error: $e';
-    });
   }
-}
 
   void _initializeLorawanMarker() async {
     try {
       _markers.add(
-              Marker(
-                width: 100.0,
-                height: 100.0,
-                point: LatLng(_latitude, _longitude),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.red,
-                          width: 3.0,
-                        ),
-                      ),
-                      child: CircleAvatar(
-                        radius: 15,
-                        backgroundImage:
-                            const AssetImage('assets/images/dgfdfdsdsf2.jpg'),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _username,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12.0,
-                        fontFamily: 'SfPro',
-                      ),
-                    ),
-                  ],
+        Marker(
+          width: 100.0,
+          height: 100.0,
+          point: LatLng(_latitude, _longitude),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.red,
+                    width: 3.0,
+                  ),
+                ),
+                child: CircleAvatar(
+                  radius: 15,
+                  backgroundImage:
+                      const AssetImage('assets/images/dgfdfdsdsf2.jpg'),
                 ),
               ),
-        );
-      
+              const SizedBox(height: 4),
+              Text(
+                _username,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12.0,
+                  fontFamily: 'SfPro',
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
       setState(() {});
-    }
-    catch (e){
+    } catch (e) {
       _responseMessage = "Error initializing markers: $e";
     }
   }
+
   void _initializeMarkers() async {
     _markers.clear();
     final String currentUserUid = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -327,270 +329,12 @@ class _MapPageState extends State<MapPage> {
       backgroundColor: const Color(0x0032ade6),
       body: Row(
         children: [
-          SafeArea(
-            child: Container(
-              width: MediaQuery.sizeOf(context).width * 0.24,
-              decoration: const BoxDecoration(
-                color: Color(0xff32ade6),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(40, 45, 40, 0),
-                    child: SizedBox(
-                      height: 82,
-                      child: Text(
-                        "BaHanap",
-                        style: TextStyle(
-                          fontSize: 62,
-                          fontFamily: 'Gilroy',
-                          color: Colors.white,
-                          letterSpacing: -4.0,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(40, 0, 40, 30),
-                    child: Container(
-                      width: 138,
-                      padding: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xff3d3d3d),
-                        borderRadius: BorderRadius.circular(37),
-                      ),
-                      child: const Center(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.support_agent,
-                              size: 15,
-                              color: Colors.white,
-                            ),
-                            SizedBox(width: 5),
-                            Text(
-                              "Administrator",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                              ),
-                            )
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const MapPage(),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        color: Color(0xff2294C9),
-                      ),
-                      width: MediaQuery.sizeOf(context).width * 0.24,
-                      padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.map,
-                            color: Colors.white,
-                            size: 25,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            "Map",
-                            style: TextStyle(
-                              fontFamily: "SFPro",
-                              fontSize: 20,
-                              color: Colors.white,
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const OperationsPage(),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: MediaQuery.sizeOf(context).width * 0.24,
-                      padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.track_changes,
-                            color: Colors.white,
-                            size: 25,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            "Operations",
-                            style: TextStyle(
-                              fontFamily: "SFPro",
-                              fontSize: 20,
-                              color: Colors.white,
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const UsersPage(),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: MediaQuery.sizeOf(context).width * 0.24,
-                      padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.supervised_user_circle,
-                            color: Colors.white,
-                            size: 25,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            "Users",
-                            style: TextStyle(
-                              fontFamily: "SFPro",
-                              fontSize: 20,
-                              color: Colors.white,
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const RescuersPage(),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: MediaQuery.sizeOf(context).width * 0.24,
-                      padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.admin_panel_settings,
-                            color: Colors.white,
-                            size: 25,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            "Rescuers",
-                            style: TextStyle(
-                                fontFamily: "SFPro",
-                                fontSize: 20,
-                                color: Colors.white),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const MobileDashboardPage(),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: MediaQuery.sizeOf(context).width * 0.24,
-                      padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.dashboard,
-                            color: Colors.white,
-                            size: 25,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            "Mobile App Dashboard",
-                            style: TextStyle(
-                              fontFamily: "SFPro",
-                              fontSize: 20,
-                              color: Colors.white,
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Container(
-                      width: MediaQuery.sizeOf(context).width * 0.24,
-                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 50),
-                      child: Center(
-                        child: SizedBox(
-                          height: 41,
-                          width: 162,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              refresh();
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0XFF2294C9),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(37),
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.logout, size: 20),
-                                SizedBox(width: 19),
-                                Text(
-                                  "Log Out",
-                                  style: TextStyle(
-                                    fontFamily: "SFPro",
-                                    fontSize: 20,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          Expanded(
+            flex: 1,
+            child: SidebarNavigation(activePage: "Map"),
           ),
           Expanded(
+            flex: 3,
             child: Column(
               children: [
                 Container(
@@ -647,28 +391,25 @@ class _MapPageState extends State<MapPage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      
-                        const SizedBox(
-                          width: 20,
-                        ),
+                      const SizedBox(
+                        width: 20,
+                      ),
                       ElevatedButton(
-                        onPressed: (){
+                        onPressed: () {
                           refresh();
-                        },//Initialize marker 
+                        }, //Initialize marker
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.all(15),
                           backgroundColor: Colors.black,
-                          textStyle: const TextStyle(
-                            color: Colors.white
-                          ),
+                          textStyle: const TextStyle(color: Colors.white),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10), // Rounded corners
-                            side: const BorderSide(color: Colors.blue, width: 0.2), // Border
+                            borderRadius:
+                                BorderRadius.circular(10), // Rounded corners
+                            side: const BorderSide(
+                                color: Colors.blue, width: 0.2), // Border
                           ),
-
                         ),
                         child: const Text("Refresh"),
-                        
                       ),
                       IconButton(
                         icon: const Icon(Icons.zoom_in),

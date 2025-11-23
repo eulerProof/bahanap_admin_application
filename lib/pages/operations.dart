@@ -1,13 +1,15 @@
 import 'package:bahanap_admin_application/pages/received_json_provider.dart';
-import 'package:bahanap_admin_application/pages/users.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:bahanap_admin_application/pages/sidebar_navigation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'map.dart';
 import 'mobile_dashboard.dart';
 import 'rescuers.dart';
+import 'users.dart';
 
 class OperationsPage extends StatefulWidget {
   const OperationsPage({super.key});
@@ -19,26 +21,38 @@ class OperationsPage extends StatefulWidget {
 class _OperationsPageState extends State<OperationsPage> {
   Timer? _timer;
   late ReceivedJSONProvider receivedProvider;
-  // 👇 This will hold your received JSON objects
-  
+
   final rescuers = [
-    "Roberto", "John", "Sergei", "Joshua", "BJ", "Achilles", "Paulo", "Ben"
+    "Roberto",
+    "John",
+    "Sergei",
+    "Joshua",
+    "BJ",
+    "Achilles",
+    "Paulo",
+    "Ben"
   ];
+
+  Map<String, String> assignedRescuers = {}; // userId -> rescuerName
+  Map<String, bool> rescuerAvailability =
+      {}; // rescuerName -> true (available) / false (busy)
+
   @override
   void initState() {
     super.initState();
-    receivedProvider = Provider.of<ReceivedJSONProvider>(context, listen: false);
+    receivedProvider =
+        Provider.of<ReceivedJSONProvider>(context, listen: false);
     _startReceivingMessages();
-  }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+    // Initially mark all rescuers as available
+    for (var r in rescuers) rescuerAvailability[r] = true;
+
+    // Load persisted assignments from Firestore
+    _loadAssignments();
   }
 
   void _startReceivingMessages() {
-    _fetchMessage(); // Fetch once immediately
+    _fetchMessage(); // fetch immediately
     _timer = Timer.periodic(const Duration(seconds: 5), (_) => _fetchMessage());
   }
 
@@ -49,9 +63,8 @@ class _OperationsPageState extends State<OperationsPage> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-
         if (data is Map<String, dynamic>) {
-          receivedProvider.addMessage(data);     
+          receivedProvider.addMessage(data);
         }
       } else {
         debugPrint("Failed: ${response.statusCode}");
@@ -61,389 +74,161 @@ class _OperationsPageState extends State<OperationsPage> {
     }
   }
 
+  Future<void> _loadAssignments() async {
+    final snapshot =
+        await FirebaseFirestore.instance.collection("assignments").get();
+    for (var doc in snapshot.docs) {
+      assignedRescuers[doc.id] = doc['rescuer'];
+      rescuerAvailability[doc['rescuer']] = false; // mark as busy
+    }
+    setState(() {});
+  }
 
-  Future<void> _assignRescuer(String rescuer, lat, lon) async {
+  Future<void> _assignRescuer(
+      String rescuer, String userId, double lat, double lon) async {
+    // Send JSON to ESP32
     try {
-      final payload = {
-        "latitude": lat,
-        "longitude": lon,
-        "uid": rescuer,
-      };
-      final esp32IP = "192.168.4.2";
-      // Send JSON to ESP32
-      final response = await http
+      final payload = {"latitude": lat, "longitude": lon, "uid": rescuer};
+      const esp32IP = "192.168.4.2";
+      await http
           .post(
             Uri.parse('http://$esp32IP/message'),
-            headers: {
-              'Content-Type': 'application/json; charset=UTF-8',
-            },
+            headers: {'Content-Type': 'application/json; charset=UTF-8'},
             body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 3));
-    } catch (e) {
-      
-    }
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
+
+      // Save assignment in Firestore
+      await FirebaseFirestore.instance
+          .collection("assignments")
+          .doc(userId)
+          .set({
+        "rescuer": rescuer,
+        "lat": lat,
+        "lon": lon,
+        "timestamp": FieldValue.serverTimestamp(),
+      });
+
+      // Update local state
+      setState(() {
+        assignedRescuers[userId] = rescuer;
+        rescuerAvailability[rescuer] = false;
+      });
+
+      // Show confirmation dialog
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
           title: const Text("Rescuer Assigned"),
           content: Text("Rescuer: $rescuer\nRescuee Coordinates: $lat, $lon"),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // closes the alert
-              },
+              onPressed: () => Navigator.of(context).pop(),
               child: const Text("OK"),
             ),
           ],
-        );
-      },
-    );
-
+        ),
+      );
+    } catch (e) {
+      debugPrint("Assignment error: $e");
+    }
   }
-  Future<void> _selectRescuer(userlat, userlon) async {
-    final lat = userlat;
-    final lon = userlon;
+
+  Future<void> _selectRescuer(String userId, double lat, double lon) async {
     showDialog(
-    context: context,
-    barrierDismissible: true,
-    barrierColor: Colors.black54,
-    builder: (BuildContext context) {
-      return StatefulBuilder(
-        builder: (context, setState) {  
-          
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+      builder: (context) {
+        return StatefulBuilder(builder: (context, setState) {
           return Dialog(
             insetPadding: const EdgeInsets.all(20),
             backgroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             child: Container(
               width: MediaQuery.of(context).size.width * 0.3,
               height: MediaQuery.of(context).size.height * 0.7,
               padding: const EdgeInsets.all(43),
-              child:Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const Text(
-                          "Rescuers",
-                          style: TextStyle(
-                              fontSize: 24, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 10),
-                        Expanded(
-          child: ListView.builder(
-            itemCount: rescuers.length,
-            itemBuilder: (context, index) {
-              final rescuerName = rescuers[index];
-              
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Expanded ensures the name text stays left-aligned
-                    Expanded(
-                      child: Text(
-                        rescuerName,
-                        style: const TextStyle(fontSize: 18),
-                      ),
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        _assignRescuer(rescuerName, lat, lon);
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Text("Rescuers",
+                      style:
+                          TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: rescuers.length,
+                      itemBuilder: (context, index) {
+                        final rescuerName = rescuers[index];
+                        final isAvailable =
+                            rescuerAvailability[rescuerName] ?? true;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                  child: Text(rescuerName,
+                                      style: const TextStyle(fontSize: 18))),
+                              ElevatedButton(
+                                onPressed: isAvailable
+                                    ? () {
+                                        _assignRescuer(
+                                            rescuerName, userId, lat, lon);
+                                        Navigator.of(context).pop();
+                                      }
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isAvailable
+                                      ? const Color(0XFF2294C9)
+                                      : Colors.grey,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20, vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(5)),
+                                ),
+                                child: Text(
+                                    isAvailable ? "Assign Rescuer" : "Busy",
+                                    style:
+                                        const TextStyle(color: Colors.white)),
+                              ),
+                            ],
+                          ),
+                        );
                       },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0XFF2294C9),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                      ),
-                      child: const Text("Assign Rescuer", style: TextStyle(color: Colors.white),),
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-
-                      ]
-              )
-
-            ),);
-        }
-      );
-    }
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
+      },
     );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final messages = Provider.of<ReceivedJSONProvider>(context).messages;
+
     return Scaffold(
       backgroundColor: const Color(0x0032ade6),
       body: Row(
         children: [
           // ✅ Sidebar
-          SafeArea(
-            child: Container(
-              width: MediaQuery.sizeOf(context).width * 0.24,
-              decoration: const BoxDecoration(
-                color: Color(0xff32ade6),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(40, 45, 40, 0),
-                    child: SizedBox(
-                      height: 82,
-                      child: const Text(
-                        "BaHanap",
-                        style: TextStyle(
-                          fontSize: 62,
-                          fontFamily: 'Gilroy',
-                          color: Colors.white,
-                          letterSpacing: -4.0,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(40, 0, 40, 30),
-                    child: Container(
-                      width: 138,
-                      padding: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xff3d3d3d),
-                        borderRadius: BorderRadius.circular(37),
-                      ),
-                      child: const Center(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.support_agent,
-                              size: 15,
-                              color: Colors.white,
-                            ),
-                            SizedBox(width: 5),
-                            Text(
-                              "Administrator",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  // ✅ Navigation buttons
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => MapPage()),
-                      );
-                    },
-                    child: Container(
-                      width: MediaQuery.sizeOf(context).width * 0.24,
-                      padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.map, color: Colors.white, size: 25),
-                          SizedBox(width: 10),
-                          Text(
-                            "Map",
-                            style: TextStyle(
-                              fontFamily: "SFPro",
-                              fontSize: 20,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => OperationsPage()),
-                      );
-                    },
-                    child: Container(
-                      width: MediaQuery.sizeOf(context).width * 0.24,
-                      decoration: const BoxDecoration(
-                        color: Color(0xff2294C9),
-                      ),
-                      padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.track_changes,
-                              color: Colors.white, size: 25),
-                          SizedBox(width: 10),
-                          Text(
-                            "Operations",
-                            style: TextStyle(
-                              fontFamily: "SFPro",
-                              fontSize: 20,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const UsersPage(),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: MediaQuery.sizeOf(context).width * 0.24,
-                      padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.supervised_user_circle,
-                            color: Colors.white,
-                            size: 25,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            "Users",
-                            style: TextStyle(
-                              fontFamily: "SFPro",
-                              fontSize: 20,
-                              color: Colors.white,
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const RescuersPage(),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: MediaQuery.sizeOf(context).width * 0.24,
-                      padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.admin_panel_settings,
-                            color: Colors.white,
-                            size: 25,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            "Rescuers",
-                            style: TextStyle(
-                                fontFamily: "SFPro",
-                                fontSize: 20,
-                                color: Colors.white),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const MobileDashboardPage(),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: MediaQuery.sizeOf(context).width * 0.24,
-                      padding: const EdgeInsets.fromLTRB(44, 10, 0, 10),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.dashboard,
-                            color: Colors.white,
-                            size: 25,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            "Mobile App Dashboard",
-                            style: TextStyle(
-                              fontFamily: "SFPro",
-                              fontSize: 20,
-                              color: Colors.white,
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: Container(
-                        width: MediaQuery.sizeOf(context).width * 0.24,
-                        padding: const EdgeInsets.fromLTRB(0, 0, 0, 50),
-                        child: Center(
-                          child: Container(
-                            height: 41,
-                            width: 162,
-                            child: ElevatedButton(onPressed: () {
-
-                            },
-                                style: ElevatedButton.styleFrom(
-                               
-                                backgroundColor: const Color(0XFF2294C9),
-                                foregroundColor: Colors.white,
-                                
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(37),
-                                
-                                ),
-                              ),
-                           child: const Center(
-                            child: Row(
-                            children: [
-                              Icon(Icons.logout, size: 20,),
-                              SizedBox(width: 19,),
-                              Text("Log Out", style: TextStyle(
-                                fontFamily: "SFPro",
-                                fontSize: 20,
-                                color: Colors.white,
-                              ),)
-                            ],
-                           ),
-                           )),
-                          )
-                        ),
-                      ),
-                      )
-                      
-                  ],
-                ),
-              
-              
-              ),),
+          Expanded(flex: 1, child: SidebarNavigation(activePage: "Operations")),
 
           // ✅ Main Content
           Expanded(
+            flex: 3,
             child: Column(
               children: [
                 Container(
@@ -461,8 +246,6 @@ class _OperationsPageState extends State<OperationsPage> {
                   ),
                 ),
                 const Divider(),
-
-                // ✅ Content Body
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(40, 20, 40, 40),
@@ -479,98 +262,91 @@ class _OperationsPageState extends State<OperationsPage> {
                           ),
                         ),
                       ),
-                      Expanded(
-                        child: GridView.builder(
-                          shrinkWrap: true,
-                          itemCount: messages.length,
-                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 550,
-                            mainAxisSpacing: 15,
-                            crossAxisSpacing: 15,
-                            mainAxisExtent: 150,
-                          ),
-                          itemBuilder: (context, i) {
-
-                            final item = messages[i];
-                            final lat = item["lat"] ?? "Unknown";
-                            final lon = item["lon"] ?? "Unknown";
-                            // final lat = "10.7380111";
-                            // final lon = "122.5621601";
-                            var id = "";
-                            if (id == "null") {
-                              id = "No Username";
-                            } else {
-                              id = item["id"] ?? "No Username";
-                            }
-                            
-
-                            return Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(15),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.grey.withValues(alpha: 0.5),
-                                    spreadRadius: 3,
-                                    blurRadius: 5,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 30),
-                              child: Row(
-                                children: [
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        "User: $id",                                       
-                                        style: const TextStyle(
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const Text(
-                                        "Coordinates",
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        "Lat: $lat, Lon: $lon",     
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const Spacer(),
-                                  ElevatedButton(
-                                    onPressed: () {
-                                      // Handle rescuer assignment here
-                                      _selectRescuer(lat, lon);
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0XFF2294C9),
-                                      padding:
-                                          const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(5),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      "Assign Rescuer",
-                                      style: TextStyle(color: Colors.white),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
+                      GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: messages.length,
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 550,
+                          mainAxisSpacing: 15,
+                          crossAxisSpacing: 15,
+                          mainAxisExtent: 150,
                         ),
+                        itemBuilder: (context, i) {
+                          final item = messages[i];
+                          final lat =
+                              double.tryParse(item["lat"]?.toString() ?? "0") ??
+                                  0;
+                          final lon =
+                              double.tryParse(item["lon"]?.toString() ?? "0") ??
+                                  0;
+                          final id = item["id"]?.toString() ?? "No Username";
+
+                          final assigned = assignedRescuers[id] != null;
+                          final assignedRescuer = assignedRescuers[id] ?? "";
+
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(15),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.grey.withOpacity(0.5),
+                                  spreadRadius: 3,
+                                  blurRadius: 5,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 30),
+                            child: Row(
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text("User: $id",
+                                        style: const TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold)),
+                                    const Text("Coordinates",
+                                        style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold)),
+                                    Text("Lat: $lat, Lon: $lon",
+                                        style: const TextStyle(
+                                            fontSize: 13, color: Colors.grey)),
+                                    if (assigned)
+                                      Text("Assigned: $assignedRescuer",
+                                          style: const TextStyle(
+                                              fontSize: 15,
+                                              color: Colors.green)),
+                                  ],
+                                ),
+                                const Spacer(),
+                                ElevatedButton(
+                                  onPressed: assigned
+                                      ? null
+                                      : () => _selectRescuer(id, lat, lon),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: assigned
+                                        ? Colors.grey
+                                        : const Color(0XFF2294C9),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 50, vertical: 20),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(5)),
+                                  ),
+                                  child: Text(
+                                      assigned ? "Assigned" : "Assign Rescuer",
+                                      style:
+                                          const TextStyle(color: Colors.white)),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),
