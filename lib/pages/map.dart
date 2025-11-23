@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:bahanap_admin_application/pages/mobile_dashboard.dart';
 import 'package:bahanap_admin_application/pages/rescuers.dart';
 import 'package:bahanap_admin_application/pages/users.dart';
+import 'package:bahanap_admin_application/pages/received_json_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -13,7 +14,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:bahanap_admin_application/pages/sidebar_navigation.dart';
 import 'operations.dart';
-import 'package:network_info_plus/network_info_plus.dart';
 import 'package:http/http.dart' as http;
 
 class MapPage extends StatefulWidget {
@@ -26,7 +26,20 @@ class MapPage extends StatefulWidget {
 class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
   final TextEditingController _searchController = TextEditingController();
+  final rescuers = [
+    "Roberto",
+    "John",
+    "Sergei",
+    "Joshua",
+    "BJ",
+    "Achilles",
+    "Paulo",
+    "Ben"
+  ];
 
+  Map<String, String> assignedRescuers = {}; // userId -> rescuerName
+  Map<String, bool> rescuerAvailability =
+      {};
   LatLng? userLocation;
   Marker? _userMarker;
   final List<Marker> _markers = [];
@@ -36,13 +49,17 @@ class _MapPageState extends State<MapPage> {
   String _username = '';
   double _latitude = 0;
   double _longitude = 0;
+  late ReceivedJSONProvider receivedProvider;
   @override
   void initState() {
     super.initState();
+    receivedProvider =
+        Provider.of<ReceivedJSONProvider>(context, listen: false);
     _initializeMarkers();
     // _fetchCurrentLocation();
     // _startLocationUpdates();
     _fetchLocationFromModule();
+    refresh();
   }
 
   @override
@@ -56,7 +73,129 @@ class _MapPageState extends State<MapPage> {
     await _fetchLocationFromModule();
     _initializeLorawanMarker();
   }
+  Future<void> _assignRescuer(
+      String rescuer, String userId, double lat, double lon) async {
+    // Send JSON to ESP32
+    try {
+      final payload = {"latitude": lat, "longitude": lon, "uid": rescuer};
+      const esp32IP = "192.168.4.2";
+      await http
+          .post(
+            Uri.parse('http://$esp32IP/message'),
+            headers: {'Content-Type': 'application/json; charset=UTF-8'},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 3));
 
+      // Save assignment in Firestore
+      await FirebaseFirestore.instance
+          .collection("assignments")
+          .doc(userId)
+          .set({
+        "rescuer": rescuer,
+        "lat": lat,
+        "lon": lon,
+        "timestamp": FieldValue.serverTimestamp(),
+      });
+
+      // Update local state
+      setState(() {
+        assignedRescuers[userId] = rescuer;
+        rescuerAvailability[rescuer] = false;
+      });
+
+      // Show confirmation dialog
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Rescuer Assigned"),
+          content: Text("Rescuer: $rescuer\nRescuee Coordinates: $lat, $lon"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint("Assignment error: $e");
+    }
+  }
+  Future<void> _selectRescuer(String userId, double lat, double lon) async {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+      builder: (context) {
+        return StatefulBuilder(builder: (context, setState) {
+          return Dialog(
+            insetPadding: const EdgeInsets.all(20),
+            backgroundColor: Colors.white,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.3,
+              height: MediaQuery.of(context).size.height * 0.7,
+              padding: const EdgeInsets.all(43),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Text("Rescuers",
+                      style:
+                          TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: rescuers.length,
+                      itemBuilder: (context, index) {
+                        final rescuerName = rescuers[index];
+                        final isAvailable =
+                            rescuerAvailability[rescuerName] ?? true;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                  child: Text(rescuerName,
+                                      style: const TextStyle(fontSize: 18))),
+                              ElevatedButton(
+                                onPressed: isAvailable
+                                    ? () {
+                                        _assignRescuer(
+                                            rescuerName, userId, lat, lon);
+                                        Navigator.of(context).pop();
+                                      }
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isAvailable
+                                      ? const Color(0XFF2294C9)
+                                      : Colors.grey,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20, vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(5)),
+                                ),
+                                child: Text(
+                                    isAvailable ? "Assign Rescuer" : "Busy",
+                                    style:
+                                        const TextStyle(color: Colors.white)),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
   Future<void> _fetchCurrentLocation() async {
     try {
       Position position = await Geolocator.getCurrentPosition(
@@ -72,43 +211,60 @@ class _MapPageState extends State<MapPage> {
       _showErrorDialog('Unable to fetch current location.');
     }
   }
-
   Future<void> _fetchLocationFromModule() async {
     try {
-      String esp32IP = "192.168.4.2";
+      const String esp32IP = "192.168.4.2";
       final response = await http.get(Uri.parse('http://$esp32IP/lastmessage'));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body); // Parse JSON
-
-        setState(() {
-          // Assign extracted fields to variables
-          _username = data["id"] ?? "Unknown";
-          _latitude = data["lat"]?.toDouble() ?? 0.0;
-          _longitude = data["lon"]?.toDouble() ?? 0.0;
-          _responseMessage = "✅ Data received successfully!";
-        });
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) {
+          data["status"] = data["status"] ?? "unassigned";
+          receivedProvider.addMessage(data);
+        }
       } else {
-        setState(() {
-          _responseMessage =
-              'Failed to receive message. Status: ${response.statusCode}';
-        });
+        debugPrint("Failed: ${response.statusCode}");
       }
     } catch (e) {
-      setState(() {
-        _responseMessage = 'Error: $e';
-      });
+      debugPrint("Error fetching message: $e");
     }
   }
+  
 
-  void _initializeLorawanMarker() async {
-    try {
+  void _initializeLorawanMarker() {
+  try {
+    // Clear all old LoRaWAN markers first
+    _markers.removeWhere((m) {
+      return m.key is ValueKey &&
+             (m.key as ValueKey).value.toString().contains("lorawan");
+    });
+
+    // Loop through ALL messages received
+    for (var msg in receivedProvider.messages) {
+      final username = msg["id"] ?? "Unknown";
+      final lat = (msg["lat"] ?? 0).toDouble();
+      final lon = (msg["lon"] ?? 0).toDouble();
+
+      // Safety check
+      if (lat == 0 || lon == 0) continue;
+
       _markers.add(
         Marker(
+          key: ValueKey("lorawan_${username}_${lat.toString()}_${lon.toString()}"),
           width: 100.0,
           height: 100.0,
-          point: LatLng(_latitude, _longitude),
-          child: Column(
+          point: LatLng(lat, lon),
+          child: GestureDetector(
+            onTap: () {
+              ScaffoldMessenger.of(context)
+              .showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "You tapped this marker")),
+              );
+              _selectRescuer(username, lat, lon);
+            },
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
@@ -119,15 +275,14 @@ class _MapPageState extends State<MapPage> {
                     width: 3.0,
                   ),
                 ),
-                child: CircleAvatar(
+                child: const CircleAvatar(
                   radius: 15,
-                  backgroundImage:
-                      const AssetImage('assets/images/dgfdfdsdsf2.jpg'),
+                  backgroundImage: AssetImage('assets/images/dgfdfdsdsf2.jpg'),
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                _username,
+                username,
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 12.0,
@@ -136,14 +291,18 @@ class _MapPageState extends State<MapPage> {
               ),
             ],
           ),
+          )
         ),
       );
-
-      setState(() {});
-    } catch (e) {
-      _responseMessage = "Error initializing markers: $e";
     }
+
+    setState(() {});
+  } catch (e) {
+    setState(() {
+      _responseMessage = "Error initializing LoRaWAN markers: $e";
+    });
   }
+}
 
   void _initializeMarkers() async {
     _markers.clear();

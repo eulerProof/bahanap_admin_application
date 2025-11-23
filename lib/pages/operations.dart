@@ -22,20 +22,20 @@ class _OperationsPageState extends State<OperationsPage> {
   Timer? _timer;
   late ReceivedJSONProvider receivedProvider;
 
-  final rescuers = [
-    "Roberto",
-    "John",
-    "Sergei",
-    "Joshua",
-    "BJ",
-    "Achilles",
-    "Paulo",
-    "Ben"
-  ];
+  // final rescuers = [
+  //   "Roberto",
+  //   "John",
+  //   "Sergei",
+  //   "Joshua",
+  //   "BJ",
+  //   "Achilles",
+  //   "Paulo",
+  //   "Ben"
+  // ];
 
-  Map<String, String> assignedRescuers = {}; // userId -> rescuerName
-  Map<String, bool> rescuerAvailability =
-      {}; // rescuerName -> true (available) / false (busy)
+  // Map<String, String> assignedRescuers = {}; // userId -> rescuerName
+  // Map<String, bool> rescuerAvailability =
+  //     {}; // rescuerName -> true (available) / false (busy)
 
   @override
   void initState() {
@@ -45,7 +45,6 @@ class _OperationsPageState extends State<OperationsPage> {
     _startReceivingMessages();
 
     // Initially mark all rescuers as available
-    for (var r in rescuers) rescuerAvailability[r] = true;
 
     // Load persisted assignments from Firestore
     _loadAssignments();
@@ -53,9 +52,64 @@ class _OperationsPageState extends State<OperationsPage> {
 
   void _startReceivingMessages() {
     _fetchMessage(); // fetch immediately
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _fetchMessage());
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _fetchMessage());
   }
+  Widget _buildRequestCard(Map<String, dynamic> item, {required bool assigned}) {
+  final lat = double.tryParse(item["lat"]?.toString() ?? "0") ?? 0;
+  final lon = double.tryParse(item["lon"]?.toString() ?? "0") ?? 0;
+  final id = item["id"]?.toString() ?? "No Username";
 
+  final assigned = receivedProvider.assignedRescuers[id] != null;
+  final assignedRescuer = receivedProvider.assignedRescuers[id] ?? "";
+
+  return Container(
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(15),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.grey.withOpacity(0.5),
+          spreadRadius: 3,
+          blurRadius: 5,
+          offset: const Offset(0, 3),
+        ),
+      ],
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 30),
+    child: Row(
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text("User: $id",
+                style: const TextStyle(
+                    fontSize: 24, fontWeight: FontWeight.bold)),
+            Text("Lat: $lat, Lon: $lon",
+                style: const TextStyle(fontSize: 13, color: Colors.grey)),
+            if (assigned)
+              Text("Assigned: $assignedRescuer",
+                  style: const TextStyle(fontSize: 15, color: Colors.green)),
+          ],
+        ),
+        const Spacer(),
+        ElevatedButton(
+          onPressed: assigned
+              ? null
+              : () => _selectRescuer(id, lat, lon),
+          style: ElevatedButton.styleFrom(
+            backgroundColor:
+                assigned ? Colors.grey : const Color(0XFF2294C9),
+          ),
+          child: Text(
+            assigned ? "Assigned" : "Assign Rescuer",
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      ],
+    ),
+  );
+}
   Future<void> _fetchMessage() async {
     try {
       const String esp32IP = "192.168.4.2";
@@ -64,6 +118,7 @@ class _OperationsPageState extends State<OperationsPage> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data is Map<String, dynamic>) {
+          data["status"] = data["status"] ?? "unassigned";
           receivedProvider.addMessage(data);
         }
       } else {
@@ -77,15 +132,20 @@ class _OperationsPageState extends State<OperationsPage> {
   Future<void> _loadAssignments() async {
     final snapshot =
         await FirebaseFirestore.instance.collection("assignments").get();
+      
     for (var doc in snapshot.docs) {
-      assignedRescuers[doc.id] = doc['rescuer'];
-      rescuerAvailability[doc['rescuer']] = false; // mark as busy
+      final userId = doc.id;
+      final rescuerName = doc['rescuer'] as String;
+
+      // Assign rescuer in provider (updates assignedRescuers, availability, and status)
+      receivedProvider.assignRescuer(userId, rescuerName);
     }
     setState(() {});
   }
 
   Future<void> _assignRescuer(
       String rescuer, String userId, double lat, double lon) async {
+        
     // Send JSON to ESP32
     try {
       final payload = {"latitude": lat, "longitude": lon, "uid": rescuer};
@@ -96,26 +156,8 @@ class _OperationsPageState extends State<OperationsPage> {
             headers: {'Content-Type': 'application/json; charset=UTF-8'},
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 3));
-
-      // Save assignment in Firestore
-      await FirebaseFirestore.instance
-          .collection("assignments")
-          .doc(userId)
-          .set({
-        "rescuer": rescuer,
-        "lat": lat,
-        "lon": lon,
-        "timestamp": FieldValue.serverTimestamp(),
-      });
-
-      // Update local state
-      setState(() {
-        assignedRescuers[userId] = rescuer;
-        rescuerAvailability[rescuer] = false;
-      });
-
-      // Show confirmation dialog
+          .timeout(const Duration(seconds: 8));
+      receivedProvider.assignRescuer(userId, rescuer);
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -129,6 +171,21 @@ class _OperationsPageState extends State<OperationsPage> {
           ],
         ),
       );
+      // Save assignment in Firestore
+      await FirebaseFirestore.instance
+          .collection("assignments")
+          .doc(userId)
+          .set({
+        "rescuer": rescuer,
+        "lat": lat,
+        "lon": lon,
+        "timestamp": FieldValue.serverTimestamp(),
+      });
+
+      // Update local state
+      
+      // Show confirmation dialog
+      
     } catch (e) {
       debugPrint("Assignment error: $e");
     }
@@ -159,11 +216,11 @@ class _OperationsPageState extends State<OperationsPage> {
                   const SizedBox(height: 10),
                   Expanded(
                     child: ListView.builder(
-                      itemCount: rescuers.length,
+                      itemCount: receivedProvider.rescuers.length,
                       itemBuilder: (context, index) {
-                        final rescuerName = rescuers[index];
+                        final rescuerName = receivedProvider.rescuers[index];
                         final isAvailable =
-                            rescuerAvailability[rescuerName] ?? true;
+                            receivedProvider.rescuerAvailability[rescuerName] ?? true;
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6.0),
                           child: Row(
@@ -218,7 +275,8 @@ class _OperationsPageState extends State<OperationsPage> {
   @override
   Widget build(BuildContext context) {
     final messages = Provider.of<ReceivedJSONProvider>(context).messages;
-
+    final unassigned = messages.where((m) => m["status"] == "unassigned").toList();
+    final assigned = messages.where((m) => m["status"] == "assigned").toList();
     return Scaffold(
       backgroundColor: const Color(0x0032ade6),
       body: Row(
@@ -262,92 +320,52 @@ class _OperationsPageState extends State<OperationsPage> {
                           ),
                         ),
                       ),
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: messages.length,
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 550,
-                          mainAxisSpacing: 15,
-                          crossAxisSpacing: 15,
-                          mainAxisExtent: 150,
+                      if (unassigned.isEmpty && assigned.isEmpty) ... [
+                        const Text("No SOS Requests found",
+                            style: TextStyle(fontSize: 25,)),
+                        
+                      ],
+                      if (unassigned.isNotEmpty) ...[
+                        const Text("Rescue Requests",
+                            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: unassigned.length,
+                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 550,
+                            mainAxisSpacing: 15,
+                            crossAxisSpacing: 15,
+                            mainAxisExtent: 150,
+                          ),
+                          itemBuilder: (context, i) {
+                            final item = unassigned[i];
+                            return _buildRequestCard(item, assigned: false);
+                          },
                         ),
-                        itemBuilder: (context, i) {
-                          final item = messages[i];
-                          final lat =
-                              double.tryParse(item["lat"]?.toString() ?? "0") ??
-                                  0;
-                          final lon =
-                              double.tryParse(item["lon"]?.toString() ?? "0") ??
-                                  0;
-                          final id = item["id"]?.toString() ?? "No Username";
+                      ],
+                      if (assigned.isNotEmpty) ...[
+                        const SizedBox(height: 40),
+                        const Text("Assigned Requests",
+                            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
 
-                          final assigned = assignedRescuers[id] != null;
-                          final assignedRescuer = assignedRescuers[id] ?? "";
-
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(15),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withOpacity(0.5),
-                                  spreadRadius: 3,
-                                  blurRadius: 5,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 30),
-                            child: Row(
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text("User: $id",
-                                        style: const TextStyle(
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.bold)),
-                                    const Text("Coordinates",
-                                        style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.bold)),
-                                    Text("Lat: $lat, Lon: $lon",
-                                        style: const TextStyle(
-                                            fontSize: 13, color: Colors.grey)),
-                                    if (assigned)
-                                      Text("Assigned: $assignedRescuer",
-                                          style: const TextStyle(
-                                              fontSize: 15,
-                                              color: Colors.green)),
-                                  ],
-                                ),
-                                const Spacer(),
-                                ElevatedButton(
-                                  onPressed: assigned
-                                      ? null
-                                      : () => _selectRescuer(id, lat, lon),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: assigned
-                                        ? Colors.grey
-                                        : const Color(0XFF2294C9),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 50, vertical: 20),
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(5)),
-                                  ),
-                                  child: Text(
-                                      assigned ? "Assigned" : "Assign Rescuer",
-                                      style:
-                                          const TextStyle(color: Colors.white)),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: assigned.length,
+                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 550,
+                            mainAxisSpacing: 15,
+                            crossAxisSpacing: 15,
+                            mainAxisExtent: 150,
+                          ),
+                          itemBuilder: (context, i) {
+                            final item = assigned[i];
+                            return _buildRequestCard(item, assigned: true);
+                          },
+                        ),
+                      ],
                     ],
                   ),
                 ),
