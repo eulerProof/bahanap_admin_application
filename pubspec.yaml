@@ -20,6 +20,7 @@ dependencies:
   firebase_core: ^4.0.0
   dropdown_button2: ^2.3.9
   network_info_plus: ^6.1.0
+  flutter_map_tile_caching: ^10.1.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -31,6 +32,7 @@ flutter:
   assets:
     - assets/images/dgfdfdsdsf2.jpg
     - assets/images/sergei.png
+    - assets/tiles2/
   fonts:
     - family: Gilroy
       fonts:

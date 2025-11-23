@@ -301,7 +301,7 @@ class _MapPageState extends State<MapPage> {
 
   void _moveToUserLocation() {
     if (userLocation != null) {
-      _mapController.move(userLocation!, 18.0);
+      _mapController.move(userLocation!, 13.0);
     } else {
       _showErrorDialog('User location is not available.');
     }
@@ -375,12 +375,15 @@ class _MapPageState extends State<MapPage> {
                     options: MapOptions(
                       initialCenter: userLocation ?? LatLng(10.7202, 122.5621),
                       initialZoom: 13.0,
+                      maxZoom: 16, // <-- REQUIRED FIX
+                      minZoom: 12,
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate:
-                            "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                        subdomains: const ['a', 'b', 'c'],
+                        tileProvider: AssetTileProvider(),
+                        urlTemplate: 'tiles2/{z}/{x}/{y}.png',
+                        maxZoom: 16,
+                        minZoom: 12,
                       ),
                       MarkerLayer(markers: _markers),
                     ],
@@ -415,7 +418,7 @@ class _MapPageState extends State<MapPage> {
                         icon: const Icon(Icons.zoom_in),
                         onPressed: () {
                           setState(() {
-                            _currentZoom = (_currentZoom + 1).clamp(1.0, 18.0);
+                            _currentZoom = (_currentZoom + 1).clamp(1.0, 16.0);
                             _mapController.move(
                                 userLocation ?? _mapController.camera.center,
                                 _currentZoom);
@@ -426,7 +429,7 @@ class _MapPageState extends State<MapPage> {
                         icon: const Icon(Icons.zoom_out),
                         onPressed: () {
                           setState(() {
-                            _currentZoom = (_currentZoom - 1).clamp(1.0, 18.0);
+                            _currentZoom = (_currentZoom - 1).clamp(1.0, 16.0);
                             _mapController.move(
                                 userLocation ?? _mapController.camera.center,
                                 _currentZoom);
@@ -438,7 +441,7 @@ class _MapPageState extends State<MapPage> {
                         onPressed: () {
                           if (userLocation != null) {
                             setState(() {
-                              _currentZoom = 18.0;
+                              _currentZoom = 13.0;
                               _mapController.move(userLocation!, _currentZoom);
                             });
                           } else {
