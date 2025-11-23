@@ -494,7 +494,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                           color: Colors.grey, width: 2),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(
-                                            22), // optional rounded corners
+                                            17), // optional rounded corners
                                       ),
                                     ),
                                     child: const Text(
@@ -530,7 +530,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                           color: Colors.grey, width: 2),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(
-                                            22), // optional rounded corners
+                                            17), // optional rounded corners
                                       ),
                                     ),
                                     child: const Text(

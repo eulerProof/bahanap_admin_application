@@ -54,13 +54,18 @@ class _OperationsPageState extends State<OperationsPage> {
     _fetchMessage(); // fetch immediately
     _timer = Timer.periodic(const Duration(seconds: 3), (_) => _fetchMessage());
   }
-  Widget _buildRequestCard(Map<String, dynamic> item, {required bool assigned}) {
+  Widget _buildRequestCard(Map<String, dynamic> item) {
+  final id = item["id"]?.toString() ?? "Invalid";
   final lat = double.tryParse(item["lat"]?.toString() ?? "0") ?? 0;
   final lon = double.tryParse(item["lon"]?.toString() ?? "0") ?? 0;
-  final id = item["id"]?.toString() ?? "No Username";
 
-  final assigned = receivedProvider.assignedRescuers[id] != null;
-  final assignedRescuer = receivedProvider.assignedRescuers[id] ?? "";
+  final bool assigned = receivedProvider.assignedRescuers.containsKey(id);
+  final String assignedRescuer = receivedProvider.assignedRescuers[id] ?? "";
+
+  // If ID is invalid, return an empty widget
+  if (id == "Invalid") {
+    return const SizedBox.shrink();
+  }
 
   return Container(
     decoration: BoxDecoration(
@@ -82,24 +87,26 @@ class _OperationsPageState extends State<OperationsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text("User: $id",
-                style: const TextStyle(
-                    fontSize: 24, fontWeight: FontWeight.bold)),
-            Text("Lat: $lat, Lon: $lon",
-                style: const TextStyle(fontSize: 13, color: Colors.grey)),
+            Text(
+              "User: $id",
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            Text(
+              "Lat: $lat, Lon: $lon",
+              style: const TextStyle(fontSize: 13, color: Colors.grey),
+            ),
             if (assigned)
-              Text("Assigned: $assignedRescuer",
-                  style: const TextStyle(fontSize: 15, color: Colors.green)),
+              Text(
+                "Assigned: $assignedRescuer",
+                style: const TextStyle(fontSize: 15, color: Colors.green),
+              ),
           ],
         ),
         const Spacer(),
         ElevatedButton(
-          onPressed: assigned
-              ? null
-              : () => _selectRescuer(id, lat, lon),
+          onPressed: assigned ? null : () => _selectRescuer(id, lat, lon),
           style: ElevatedButton.styleFrom(
-            backgroundColor:
-                assigned ? Colors.grey : const Color(0XFF2294C9),
+            backgroundColor: assigned ? Colors.grey : const Color(0XFF2294C9),
           ),
           child: Text(
             assigned ? "Assigned" : "Assign Rescuer",
@@ -110,6 +117,7 @@ class _OperationsPageState extends State<OperationsPage> {
     ),
   );
 }
+
   Future<void> _fetchMessage() async {
     try {
       const String esp32IP = "192.168.4.2";
@@ -148,11 +156,11 @@ class _OperationsPageState extends State<OperationsPage> {
         
     // Send JSON to ESP32
     try {
-      final payload = {"latitude": lat, "longitude": lon, "uid": rescuer};
+      final payload = {"latitude": lat, "longitude": lon, "rescuer": rescuer, "uid": userId};
       const esp32IP = "192.168.4.2";
       await http
           .post(
-            Uri.parse('http://$esp32IP/message'),
+            Uri.parse('http://$esp32IP/assign'),
             headers: {'Content-Type': 'application/json; charset=UTF-8'},
             body: jsonEncode(payload),
           )
@@ -227,29 +235,40 @@ class _OperationsPageState extends State<OperationsPage> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Expanded(
-                                  child: Text(rescuerName,
-                                      style: const TextStyle(fontSize: 18))),
+                                  child: Row(
+                                    children: [
+                                      Text(rescuerName,
+                                      style: const TextStyle(fontSize: 18)),
+                                      const SizedBox(width: 10,),
+                                      Text(isAvailable ?
+                                      "Available" : "Busy"
+                                      ,
+                                      style: TextStyle(fontSize: 13,
+                                        color: isAvailable ?
+                                        Colors.green : Colors.red
+                                      
+                                      )),
+                                    ],
+                                  )),
                               ElevatedButton(
-                                onPressed: isAvailable
-                                    ? () {
+                                onPressed:  () {
                                         _assignRescuer(
                                             rescuerName, userId, lat, lon);
                                         Navigator.of(context).pop();
                                       }
-                                    : null,
+                                    ,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: isAvailable
-                                      ? const Color(0XFF2294C9)
-                                      : Colors.grey,
+                                  backgroundColor: const Color(0XFF2294C9)
+                                      ,
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 20, vertical: 10),
                                   shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(5)),
                                 ),
-                                child: Text(
-                                    isAvailable ? "Assign Rescuer" : "Busy",
+                                child: const Text(
+                                    "Assign Rescuer",
                                     style:
-                                        const TextStyle(color: Colors.white)),
+                                      TextStyle(color: Colors.white)),
                               ),
                             ],
                           ),
@@ -341,7 +360,7 @@ class _OperationsPageState extends State<OperationsPage> {
                           ),
                           itemBuilder: (context, i) {
                             final item = unassigned[i];
-                            return _buildRequestCard(item, assigned: false);
+                            return _buildRequestCard(item);
                           },
                         ),
                       ],
@@ -362,7 +381,7 @@ class _OperationsPageState extends State<OperationsPage> {
                           ),
                           itemBuilder: (context, i) {
                             final item = assigned[i];
-                            return _buildRequestCard(item, assigned: true);
+                            return _buildRequestCard(item);;
                           },
                         ),
                       ],
