@@ -1,8 +1,10 @@
+import 'package:bahanap_admin_application/pages/received_json_provider.dart';
 import 'package:bahanap_admin_application/pages/users.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import 'map.dart';
 import 'mobile_dashboard.dart';
 import 'rescuers.dart';
@@ -16,15 +18,16 @@ class OperationsPage extends StatefulWidget {
 
 class _OperationsPageState extends State<OperationsPage> {
   Timer? _timer;
-
+  late ReceivedJSONProvider receivedProvider;
   // 👇 This will hold your received JSON objects
-  List<Map<String, dynamic>> receivedJSON = [];
+  
   final rescuers = [
-    "roberto", "John", "serg"
+    "Roberto", "John", "Sergei", "Joshua", "BJ", "Achilles", "Paulo", "Ben"
   ];
   @override
   void initState() {
     super.initState();
+    receivedProvider = Provider.of<ReceivedJSONProvider>(context, listen: false);
     _startReceivingMessages();
   }
 
@@ -48,14 +51,7 @@ class _OperationsPageState extends State<OperationsPage> {
         final data = jsonDecode(response.body);
 
         if (data is Map<String, dynamic>) {
-          // ✅ Check if we already have this message (by ID or timestamp)
-          final existing = receivedJSON.any((item) => item["id"] == data["id"]);
-
-          if (!existing) {
-            setState(() {
-              receivedJSON.add(data);
-            });
-          }
+          receivedProvider.addMessage(data);     
         }
       } else {
         debugPrint("Failed: ${response.statusCode}");
@@ -159,9 +155,13 @@ class _OperationsPageState extends State<OperationsPage> {
                         _assignRescuer(rescuerName, lat, lon);
                       },
                       style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        backgroundColor: const Color(0XFF2294C9),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(5),
+                        ),
                       ),
-                      child: const Text("Assign Rescuer"),
+                      child: const Text("Assign Rescuer", style: TextStyle(color: Colors.white),),
                     ),
                   ],
                 ),
@@ -182,6 +182,7 @@ class _OperationsPageState extends State<OperationsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final messages = Provider.of<ReceivedJSONProvider>(context).messages;
     return Scaffold(
       backgroundColor: const Color(0x0032ade6),
       body: Row(
@@ -481,7 +482,7 @@ class _OperationsPageState extends State<OperationsPage> {
                       Expanded(
                         child: GridView.builder(
                           shrinkWrap: true,
-                          itemCount: receivedJSON.length,
+                          itemCount: messages.length,
                           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 550,
                             mainAxisSpacing: 15,
@@ -490,7 +491,7 @@ class _OperationsPageState extends State<OperationsPage> {
                           ),
                           itemBuilder: (context, i) {
 
-                            final item = receivedJSON[i];
+                            final item = messages[i];
                             final lat = item["lat"] ?? "Unknown";
                             final lon = item["lon"] ?? "Unknown";
                             // final lat = "10.7380111";
