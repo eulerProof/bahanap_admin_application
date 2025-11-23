@@ -33,32 +33,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
       "category": "pre-disaster"
     }
   ];
-    Future<void> _sendPostRequest() async {
-    try {
-      final response = await http.post(
-        Uri.parse('http://192.168.4.1/message'),
-        headers: <String, String>{
-          'Content-Type': 'application/json; charset=UTF-8',
-        },
-        body: jsonEncode(<String, String>{
-          'message': _textController.text,
-          'coordinates': _textController.text,
-        }),
-      );
-
-      setState(() {
-        if (response.statusCode == 200) {
-          _responseMessage = 'Message sent successfully!';
-        } else {
-          _responseMessage = 'Failed to send message. Status: ${response.statusCode}';
-        }
-      });
-    } catch (e) {
-      setState(() {
-        _responseMessage = 'Error: $e';
-      });
-    }
-  }
+    
   void showEditPopup(BuildContext context) {
   showDialog(
     context: context,
@@ -717,6 +692,29 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
 
                           ) 
                           
+                        ),
+                        const SizedBox(
+                          height: 8,
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            //placeholder for saving water level to IOT 
+                          },
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.fromLTRB(28, 14, 28, 14),
+                            backgroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.grey, width: 2),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(22), // optional rounded corners
+                            ),
+                            
+                          ), 
+                          child: const Text("Save",
+                            style: TextStyle(
+                              fontSize: 22,
+                              color: Colors.black
+                            ),  
+                          )
                         ),
                         const SizedBox(
                           height: 40,
