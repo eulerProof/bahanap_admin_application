@@ -86,10 +86,9 @@ class _UsersPageState extends State<UsersPage> {
                                           final phoneNumber =
                                               user['PhoneNumber'] ??
                                                   "No Phone Number Provided";
-                                          final coordinates =
-                                              user['Coordinates'];
-
-                                          return Container(
+                                          
+                                         
+                                            return Container(
                                               decoration: BoxDecoration(
                                                 boxShadow: [
                                                   BoxShadow(
@@ -157,6 +156,7 @@ class _UsersPageState extends State<UsersPage> {
                                                   ],
                                                 ),
                                               ));
+                                          
                                         })
                                   ],
                                 )))

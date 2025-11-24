@@ -2,7 +2,13 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 class ReceivedJSONProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _messages = [];
   Map<String, dynamic>? _lastRawMessage; // store last received message
@@ -30,7 +36,7 @@ class ReceivedJSONProvider extends ChangeNotifier {
   }
 
   void _startPolling() {
-    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+    _pollingTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
       _fetchMessage();
     });
   }
@@ -38,7 +44,7 @@ class ReceivedJSONProvider extends ChangeNotifier {
   // ----------------------- 🟢 Fetch from ESP32 -------------------------
   Future<void> _fetchMessage() async {
     try {
-      const String esp32IP = "192.168.4.2";
+      const String esp32IP = "192.168.4.3";
       final response =
           await http.get(Uri.parse('http://$esp32IP/lastmessage'));
 
@@ -135,6 +141,29 @@ class ReceivedJSONProvider extends ChangeNotifier {
     }
   }
 
+
+  final List<Map<String, dynamic>> _evacuationMarkers = [];
+
+List<Map<String, dynamic>> get evacuationMarkers =>
+    List.unmodifiable(_evacuationMarkers);
+
+void addEvacuationMarker(LatLng point, {String name = "Evacuation Center"}) {
+  final markerData = {
+    'point': point,
+    'name': name,
+    'timestamp': DateTime.now(),
+  };
+  _evacuationMarkers.add(markerData);
+  notifyListeners();
+
+  FirebaseFirestore.instance.collection('evacuation_markers').add({
+    'lat': point.latitude,
+    'lon': point.longitude,
+    'name': name,
+    'timestamp': FieldValue.serverTimestamp(),
+  }).then((_) => print("Evacuation marker uploaded"))
+    .catchError((e) => print("Error uploading marker: $e"));
+}
   void clear() {
     _messages.clear();
     _lastRawMessage = null;

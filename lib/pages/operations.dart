@@ -64,7 +64,7 @@ class _OperationsPageState extends State<OperationsPage> {
 
   // If ID is invalid, return an empty widget
   if (id == "Invalid") {
-    return const SizedBox.shrink();
+    return SizedBox(width: 0,);
   }
 
   return Container(
@@ -120,7 +120,7 @@ class _OperationsPageState extends State<OperationsPage> {
 
   Future<void> _fetchMessage() async {
     try {
-      const String esp32IP = "192.168.4.2";
+      const String esp32IP = "192.168.4.3";
       final response = await http.get(Uri.parse('http://$esp32IP/lastmessage'));
 
       if (response.statusCode == 200) {
@@ -157,7 +157,7 @@ class _OperationsPageState extends State<OperationsPage> {
     // Send JSON to ESP32
     try {
       final payload = {"latitude": lat, "longitude": lon, "rescuer": rescuer, "uid": userId};
-      const esp32IP = "192.168.4.2";
+      const esp32IP = "192.168.4.3";
       await http
           .post(
             Uri.parse('http://$esp32IP/assign'),

@@ -24,6 +24,7 @@ class MapPage extends StatefulWidget {
 }
 
 class _MapPageState extends State<MapPage> {
+  bool _isAddingEvacuationMarker = false;
   final MapController _mapController = MapController();
   final TextEditingController _searchController = TextEditingController();
   final rescuers = [
@@ -49,17 +50,17 @@ class _MapPageState extends State<MapPage> {
   String _username = '';
   double _latitude = 0;
   double _longitude = 0;
-  late ReceivedJSONProvider receivedProvider;
+  late ReceivedJSONProvider provider;
   @override
   void initState() {
     super.initState();
-    receivedProvider =
+    provider =
         Provider.of<ReceivedJSONProvider>(context, listen: false);
-    _initializeMarkers();
+    // _initializeMarkers();
     // _fetchCurrentLocation();
-    // _startLocationUpdates();
-    _fetchLocationFromModule();
+    // _startLocationUpdates();   
     refresh();
+    _initializeEvacuationMarkers();
   }
 
   @override
@@ -70,7 +71,6 @@ class _MapPageState extends State<MapPage> {
   }
 
   void refresh() async {
-    await _fetchLocationFromModule();
     _initializeLorawanMarker();
   }
   Future<void> _assignRescuer(
@@ -78,32 +78,16 @@ class _MapPageState extends State<MapPage> {
     // Send JSON to ESP32
     try {
       final payload = {"latitude": lat, "longitude": lon, "uid": rescuer};
-      const esp32IP = "192.168.4.2";
+      const esp32IP = "192.168.4.3";
       await http
           .post(
-            Uri.parse('http://$esp32IP/message'),
+            Uri.parse('http://$esp32IP/assign'),
             headers: {'Content-Type': 'application/json; charset=UTF-8'},
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 3));
-
-      // Save assignment in Firestore
-      await FirebaseFirestore.instance
-          .collection("assignments")
-          .doc(userId)
-          .set({
-        "rescuer": rescuer,
-        "lat": lat,
-        "lon": lon,
-        "timestamp": FieldValue.serverTimestamp(),
-      });
-
-      // Update local state
-      setState(() {
-        assignedRescuers[userId] = rescuer;
-        rescuerAvailability[rescuer] = false;
-      });
-
+          .timeout(const Duration(seconds: 8));
+      provider.assignRescuer(userId, rescuer);
+      _initializeLorawanMarker();
       // Show confirmation dialog
       showDialog(
         context: context,
@@ -118,6 +102,19 @@ class _MapPageState extends State<MapPage> {
           ],
         ),
       );
+      // Save assignment in Firestore
+      await FirebaseFirestore.instance
+          .collection("assignments")
+          .doc(userId)
+          .set({
+        "rescuer": rescuer,
+        "lat": lat,
+        "lon": lon,
+        "timestamp": FieldValue.serverTimestamp(),
+      });
+
+      // Update local state
+      
     } catch (e) {
       debugPrint("Assignment error: $e");
     }
@@ -147,40 +144,51 @@ class _MapPageState extends State<MapPage> {
                   const SizedBox(height: 10),
                   Expanded(
                     child: ListView.builder(
-                      itemCount: rescuers.length,
+                      itemCount: provider.rescuers.length,
                       itemBuilder: (context, index) {
-                        final rescuerName = rescuers[index];
+                        final rescuerName = provider.rescuers[index];
                         final isAvailable =
-                            rescuerAvailability[rescuerName] ?? true;
+                            provider.rescuerAvailability[rescuerName] ?? true;
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6.0),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Expanded(
-                                  child: Text(rescuerName,
-                                      style: const TextStyle(fontSize: 18))),
+                                  child: Row(
+                                    children: [
+                                      Text(rescuerName,
+                                      style: const TextStyle(fontSize: 18)),
+                                      const SizedBox(width: 10,),
+                                      Text(isAvailable ?
+                                      "Available" : "Busy"
+                                      ,
+                                      style: TextStyle(fontSize: 13,
+                                        color: isAvailable ?
+                                        Colors.green : Colors.red
+                                      
+                                      )),
+                                    ],
+                                  )),
                               ElevatedButton(
-                                onPressed: isAvailable
-                                    ? () {
+                                onPressed:  () {
                                         _assignRescuer(
                                             rescuerName, userId, lat, lon);
                                         Navigator.of(context).pop();
                                       }
-                                    : null,
+                                    ,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: isAvailable
-                                      ? const Color(0XFF2294C9)
-                                      : Colors.grey,
+                                  backgroundColor: const Color(0XFF2294C9)
+                                      ,
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 20, vertical: 10),
                                   shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(5)),
                                 ),
-                                child: Text(
-                                    isAvailable ? "Assign Rescuer" : "Busy",
+                                child: const Text(
+                                    "Assign Rescuer",
                                     style:
-                                        const TextStyle(color: Colors.white)),
+                                      TextStyle(color: Colors.white)),
                               ),
                             ],
                           ),
@@ -211,24 +219,7 @@ class _MapPageState extends State<MapPage> {
       _showErrorDialog('Unable to fetch current location.');
     }
   }
-  Future<void> _fetchLocationFromModule() async {
-    try {
-      const String esp32IP = "192.168.4.2";
-      final response = await http.get(Uri.parse('http://$esp32IP/lastmessage'));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data is Map<String, dynamic>) {
-          data["status"] = data["status"] ?? "unassigned";
-          receivedProvider.addMessage(data);
-        }
-      } else {
-        debugPrint("Failed: ${response.statusCode}");
-      }
-    } catch (e) {
-      debugPrint("Error fetching message: $e");
-    }
-  }
   
 
   void _initializeLorawanMarker() {
@@ -240,13 +231,13 @@ class _MapPageState extends State<MapPage> {
     });
 
     // Loop through ALL messages received
-    for (var msg in receivedProvider.messages) {
+    for (var msg in provider.messages) {
       final username = msg["id"] ?? "Unknown";
       final lat = (msg["lat"] ?? 0).toDouble();
       final lon = (msg["lon"] ?? 0).toDouble();
-
+       final isAssigned = provider.assignedRescuers.containsKey(username);
       // Safety check
-      if (lat == 0 || lon == 0) continue;
+      if (lat == 0 || lon == 0 || username == "Unknown") continue;
 
       _markers.add(
         Marker(
@@ -255,44 +246,64 @@ class _MapPageState extends State<MapPage> {
           height: 100.0,
           point: LatLng(lat, lon),
           child: GestureDetector(
-            onTap: () {
-              ScaffoldMessenger.of(context)
-              .showSnackBar(
-                const SnackBar(
+          onTap: () {
+            // 🔍 Check if this user already has a rescuer
+           
+
+            if (isAssigned) {
+              showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text("Already Assigned"),
                   content: Text(
-                    "You tapped this marker")),
+                    "This request is already assigned to ${provider.assignedRescuers[username]}.",
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("OK"),
+                    ),
+                  ],
+                ),
               );
-              _selectRescuer(username, lat, lon);
-            },
-            child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.red,
-                    width: 3.0,
+              return; // Stop further logic
+            }
+
+            // Otherwise proceed normally
+            _selectRescuer(username, lat, lon);
+          },
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isAssigned ?
+                      Colors.blueGrey:
+                      Colors.red,
+                      width: 3.0,
+                    ),
+                  ),
+                  child: CircleAvatar(
+                    radius: 15,
+                    backgroundImage:
+                        const AssetImage('assets/images/dgfdfdsdsf2.jpg'),
                   ),
                 ),
-                child: const CircleAvatar(
-                  radius: 15,
-                  backgroundImage: AssetImage('assets/images/dgfdfdsdsf2.jpg'),
+                const SizedBox(height: 4),
+                Text(
+                  username,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12.0,
+                    fontFamily: 'SfPro',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                username,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12.0,
-                  fontFamily: 'SfPro',
-                ),
-              ),
-            ],
-          ),
-          )
+              ],
+            ),
         ),
+      )
       );
     }
 
@@ -303,7 +314,7 @@ class _MapPageState extends State<MapPage> {
     });
   }
 }
-
+  
   void _initializeMarkers() async {
     _markers.clear();
     final String currentUserUid = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -365,7 +376,52 @@ class _MapPageState extends State<MapPage> {
       _showErrorDialog('Error loading markers.');
     }
   }
+  void _initializeEvacuationMarkers() {
+  final provider = Provider.of<ReceivedJSONProvider>(context, listen: false);
+  _markers.clear();
 
+  for (var i = 0; i < provider.evacuationMarkers.length; i++) {
+    final data = provider.evacuationMarkers[i];
+    final point = data['point'] as LatLng;
+    final name = data['name'] as String;
+
+    _markers.add(
+      Marker(
+        key: ValueKey("evac_${point.latitude}_${point.longitude}_$i"),
+        width: 80,
+        height: 80,
+        point: point,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.green, width: 3.0),
+                color: Colors.white,
+              ),
+              child: const Center(
+                child: Icon(Icons.house, size: 20, color: Colors.green),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              name,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 10.0,
+                fontFamily: 'SfPro',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
   void _updateUserMarker(LatLng location) {
     if (_userMarker != null) {
       _markers.remove(_userMarker);
@@ -530,23 +586,88 @@ class _MapPageState extends State<MapPage> {
                 ),
                 Expanded(
                   child: FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                      initialCenter: userLocation ?? LatLng(10.7202, 122.5621),
-                      initialZoom: 13.0,
-                      maxZoom: 16, // <-- REQUIRED FIX
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: userLocation ?? LatLng(10.7202, 122.5621),
+                    initialZoom: 13.0,
+                    maxZoom: 16,
+                    minZoom: 12,
+                    onTap: (tapPosition, point) async {
+  if (_isAddingEvacuationMarker) {
+    // Open a dialog to get the name
+    final TextEditingController _nameController = TextEditingController();
+    final String? evacName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enter Evacuation Center Name'),
+        content: TextField(
+          controller: _nameController,
+          decoration: const InputDecoration(
+            hintText: 'Evacuation Center Name',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(), // Cancel
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (_nameController.text.trim().isNotEmpty) {
+                Navigator.of(context).pop(_nameController.text.trim());
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (evacName != null) {
+      // Add the marker with the name to the provider
+      Provider.of<ReceivedJSONProvider>(context, listen: false)
+          .addEvacuationMarker(point, name: evacName);
+
+      setState(() {
+        _isAddingEvacuationMarker = false; // turn off add mode
+        _markers.clear();
+        _initializeLorawanMarker();
+        _initializeEvacuationMarkers();
+      });
+
+      // Change cursor: you can set a state variable to update the cursor
+      // Example: _isAddingEvacuationMarker = false will revert cursor
+      MouseRegion(
+        cursor: SystemMouseCursors.basic, // default cursor
+      );
+    }
+  }
+},
+                  ),
+                  children: [
+                    TileLayer(
+                      tileProvider: AssetTileProvider(),
+                      urlTemplate: 'tiles2/{z}/{x}/{y}.png',
+                      maxZoom: 16,
                       minZoom: 12,
                     ),
-                    children: [
-                      TileLayer(
-                        tileProvider: AssetTileProvider(),
-                        urlTemplate: 'tiles2/{z}/{x}/{y}.png',
-                        maxZoom: 16,
-                        minZoom: 12,
-                      ),
-                      MarkerLayer(markers: _markers),
-                    ],
-                  ),
+                    MarkerLayer(
+  markers: _markers.asMap().entries.map((entry) {
+    final index = entry.key;
+    final marker = entry.value;
+
+    return Marker(
+      key: ValueKey('marker_$index'),
+      width: marker.width,
+      height: marker.height,
+      point: marker.point,
+      child: marker.child,   // <-- Use original marker widget
+    );
+  }).toList(),
+),
+                  ],
+                )
                 ),
                 Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -572,6 +693,25 @@ class _MapPageState extends State<MapPage> {
                           ),
                         ),
                         child: const Text("Refresh"),
+                      ),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _isAddingEvacuationMarker = true;
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Tap a location on the map to add marker')),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.all(15),
+                          backgroundColor: Colors.orange,
+                          textStyle: const TextStyle(color: Colors.white),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text("Add Evacuation Marker"),
                       ),
                       IconButton(
                         icon: const Icon(Icons.zoom_in),

@@ -180,7 +180,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                   try {
                                     // Send to ESP32
                                     const String esp32IP =
-                                        "192.168.4.2"; // or your node's IP
+                                        "192.168.4.3"; // or your node's IP
                                     final response = await http.post(
                                       Uri.parse('http://$esp32IP/message'),
                                       headers: {
