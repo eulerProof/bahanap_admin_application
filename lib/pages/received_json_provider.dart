@@ -17,18 +17,18 @@ class ReceivedJSONProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get messages => _messages;
 
   // Rescuers
-  final List<String> _rescuers = [
-    "Roberto",
-    "John",
-    "Sergei",
-    "Joshua",
-    "BJ",
-    "Achilles",
-    "Paulo",
-    "Ben"
-  ];
+  final List<Map<String, String>> _rescuers = [
+  {"name": "Roberto", "id": "5ONCWfgob8YfzrE7QM7TWkCVa863"},
+  {"name": "John", "id": ""},
+  {"name": "Sergei", "id": ""},
+  {"name": "Joshua", "id": ""},
+  {"name": "BJ", "id": ""},
+  {"name": "Achilles", "id": ""},
+  {"name": "Paulo", "id": ""},
+  {"name": "Ben", "id": ""},
+];
   final Map<String, String> _assignedRescuers = {}; // userId -> rescuer
-  final Map<String, bool> _rescuerAvailability = {}; // rescuer -> available?
+  final Map<String, bool> _rescuerAvailability = {}; // rescuerId -> available?
 
   // ----------------------- 🟢 Initialize polling -----------------------
   ReceivedJSONProvider() {
@@ -116,7 +116,7 @@ class ReceivedJSONProvider extends ChangeNotifier {
     }
   }
 
-  List<String> get rescuers => List.unmodifiable(_rescuers);
+  List<Map<String, String>> get rescuers => List.unmodifiable(_rescuers);
 
   Map<String, bool> get rescuerAvailability =>
       Map.unmodifiable(_rescuerAvailability);

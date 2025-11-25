@@ -5,7 +5,8 @@ import 'package:bahanap_admin_application/pages/sidebar_navigation.dart';
 import 'package:flutter/material.dart';
 import 'map.dart';
 import 'operations.dart';
-
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 class RescuersPage extends StatefulWidget {
   const RescuersPage({super.key});
   @override
@@ -75,19 +76,125 @@ class _RescuersPageState extends State<RescuersPage> {
 
                 // Content area (expandable)
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(40, 0, 40, 40),
-                    child: Container(
-                      // Replace this with your list or grid of rescuers
-                      color: Colors.white.withOpacity(0.1),
-                      child: const Center(
-                        child: Text(
-                          "Rescuer list goes here",
-                          style: TextStyle(fontSize: 18),
-                        ),
-                      ),
-                    ),
-                  ),
+                  child: StreamBuilder(
+        stream: FirebaseFirestore.instance.collection("profiles").snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          if (!snapshot.hasData) {
+            return const Center(
+              child: Text("No Data Received"),
+            );
+          }
+
+          return  Padding(
+                                padding: EdgeInsets.all(20),
+                                child: ListView(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    GridView.builder(
+                                        clipBehavior: Clip.none,
+                                        shrinkWrap: true,
+                                        physics:
+                                            const NeverScrollableScrollPhysics(),
+                                        gridDelegate:
+                                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                                          maxCrossAxisExtent:
+                                              550, // max width of each grid item
+                                          mainAxisSpacing: 15,
+                                          crossAxisSpacing: 15,
+                                          mainAxisExtent:
+                                              150, // << fixed height in pixels!
+                                        ),
+                                        itemCount: snapshot.data!.docs.length,
+                                        itemBuilder: (context, int i) {
+                                          final users =
+                                              snapshot.data!.docs.toList();
+                                          final user = users[i];
+                                          final name = user['Name'] ??
+                                              "No Name Provided";
+                                          final phoneNumber =
+                                              user['PhoneNumber'] ??
+                                                  "No Phone Number Provided";
+                                          
+                                         
+                                            return Container(
+                                              decoration: BoxDecoration(
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.grey
+                                                        .withValues(alpha: 0.5),
+                                                    spreadRadius: 3,
+                                                    blurRadius: 5,
+                                                    offset: const Offset(0, 3),
+                                                  ),
+                                                ],
+                                                color: Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(15),
+                                              ),
+                                              child: Container(
+                                                padding: const EdgeInsets.only(
+                                                    right: 30),
+                                                width: 600,
+                                                child: Row(
+                                                  children: [
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .fromLTRB(
+                                                          30, 5, 0, 5),
+                                                      child: Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .center,
+                                                        children: [
+                                                          Text(
+                                                            name
+                                                                .toString()
+                                                                .trim(),
+                                                            style: TextStyle(
+                                                              fontSize: 24,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                            ),
+                                                          ),
+                                                          Text(
+                                                            "Phone Number: " +
+                                                                phoneNumber
+                                                                    .toString(),
+                                                            style: TextStyle(
+                                                              fontSize: 15,
+                                                              color: Color(
+                                                                  0XFF2294C9),
+                                                            ),
+                                                          ),
+                                                          Text(
+                                                            "Citizen",
+                                                            style: TextStyle(
+                                                              fontSize: 15,
+                                                              color:
+                                                                  Colors.grey,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ));
+                                          
+                                        })
+                                  ],
+                                ));
+        })
                 ),
               ],
             ),

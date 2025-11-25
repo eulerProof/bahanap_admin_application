@@ -27,21 +27,10 @@ class _MapPageState extends State<MapPage> {
   bool _isAddingEvacuationMarker = false;
   final MapController _mapController = MapController();
   final TextEditingController _searchController = TextEditingController();
-  final rescuers = [
-    "Roberto",
-    "John",
-    "Sergei",
-    "Joshua",
-    "BJ",
-    "Achilles",
-    "Paulo",
-    "Ben"
-  ];
-
-  Map<String, String> assignedRescuers = {}; // userId -> rescuerName
-  Map<String, bool> rescuerAvailability =
-      {};
   LatLng? userLocation;
+  List<Marker> _lorawanMarkers = [];
+List<Marker> _evacuationMarkers = [];
+
   Marker? _userMarker;
   final List<Marker> _markers = [];
   double _currentZoom = 13.0;
@@ -49,6 +38,7 @@ class _MapPageState extends State<MapPage> {
   StreamSubscription<Position>? _positionStreamSubscription;
   String _username = '';
   double _latitude = 0;
+  Timer? _pollingTimer;
   double _longitude = 0;
   late ReceivedJSONProvider provider;
   @override
@@ -61,8 +51,14 @@ class _MapPageState extends State<MapPage> {
     // _startLocationUpdates();   
     refresh();
     _initializeEvacuationMarkers();
+    _startPolling();
   }
-
+  void _startPolling() {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      refresh();
+    _initializeEvacuationMarkers();
+    });
+  }
   @override
   void dispose() {
     _positionStreamSubscription?.cancel();
@@ -70,14 +66,15 @@ class _MapPageState extends State<MapPage> {
     super.dispose();
   }
 
-  void refresh() async {
+  void refresh(){
     _initializeLorawanMarker();
   }
   Future<void> _assignRescuer(
-      String rescuer, String userId, double lat, double lon) async {
+      String rescuer, String userId, double lat, double lon, String rescuerName) async {
+        
     // Send JSON to ESP32
     try {
-      final payload = {"latitude": lat, "longitude": lon, "uid": rescuer};
+      final payload = {"latitude": lat, "longitude": lon, "rescuer": rescuer, "uid": userId};
       const esp32IP = "192.168.4.3";
       await http
           .post(
@@ -86,14 +83,12 @@ class _MapPageState extends State<MapPage> {
             body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 8));
-      provider.assignRescuer(userId, rescuer);
-      _initializeLorawanMarker();
-      // Show confirmation dialog
+      provider.assignRescuer(userId, rescuerName);
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text("Rescuer Assigned"),
-          content: Text("Rescuer: $rescuer\nRescuee Coordinates: $lat, $lon"),
+          content: Text("Rescuer: $rescuerName\nRescuee Coordinates: $lat, $lon"),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -104,10 +99,10 @@ class _MapPageState extends State<MapPage> {
       );
       // Save assignment in Firestore
       await FirebaseFirestore.instance
-          .collection("assignments")
-          .doc(userId)
-          .set({
-        "rescuer": rescuer,
+      .collection("assignments")
+      .doc(userId)
+      .set({
+        "rescuerId": rescuer,                    // ID // Name for display
         "lat": lat,
         "lon": lon,
         "timestamp": FieldValue.serverTimestamp(),
@@ -115,10 +110,13 @@ class _MapPageState extends State<MapPage> {
 
       // Update local state
       
+      // Show confirmation dialog
+      
     } catch (e) {
       debugPrint("Assignment error: $e");
     }
   }
+
   Future<void> _selectRescuer(String userId, double lat, double lon) async {
     showDialog(
       context: context,
@@ -146,9 +144,11 @@ class _MapPageState extends State<MapPage> {
                     child: ListView.builder(
                       itemCount: provider.rescuers.length,
                       itemBuilder: (context, index) {
-                        final rescuerName = provider.rescuers[index];
+                        final rescuerName = provider.rescuers[index]["name"];
+                        final rescuerId   = provider.rescuers[index]["id"];
+
                         final isAvailable =
-                            provider.rescuerAvailability[rescuerName] ?? true;
+                            provider.rescuerAvailability[rescuerId] ?? true;
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6.0),
                           child: Row(
@@ -157,7 +157,7 @@ class _MapPageState extends State<MapPage> {
                               Expanded(
                                   child: Row(
                                     children: [
-                                      Text(rescuerName,
+                                      Text(rescuerName!,
                                       style: const TextStyle(fontSize: 18)),
                                       const SizedBox(width: 10,),
                                       Text(isAvailable ?
@@ -173,7 +173,7 @@ class _MapPageState extends State<MapPage> {
                               ElevatedButton(
                                 onPressed:  () {
                                         _assignRescuer(
-                                            rescuerName, userId, lat, lon);
+                                            rescuerId!, userId, lat, lon, rescuerName);
                                         Navigator.of(context).pop();
                                       }
                                     ,
@@ -378,7 +378,11 @@ class _MapPageState extends State<MapPage> {
   }
   void _initializeEvacuationMarkers() {
   final provider = Provider.of<ReceivedJSONProvider>(context, listen: false);
-  _markers.clear();
+  _markers.removeWhere((m) {
+      return m.key is ValueKey &&
+             (m.key as ValueKey).value.toString().contains("evac");
+    });
+
 
   for (var i = 0; i < provider.evacuationMarkers.length; i++) {
     final data = provider.evacuationMarkers[i];

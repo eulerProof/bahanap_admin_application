@@ -152,7 +152,7 @@ class _OperationsPageState extends State<OperationsPage> {
   }
 
   Future<void> _assignRescuer(
-      String rescuer, String userId, double lat, double lon) async {
+      String rescuer, String userId, double lat, double lon, String rescuerName) async {
         
     // Send JSON to ESP32
     try {
@@ -165,12 +165,12 @@ class _OperationsPageState extends State<OperationsPage> {
             body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 8));
-      receivedProvider.assignRescuer(userId, rescuer);
+      receivedProvider.assignRescuer(userId, rescuerName);
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text("Rescuer Assigned"),
-          content: Text("Rescuer: $rescuer\nRescuee Coordinates: $lat, $lon"),
+          content: Text("Rescuer: $rescuerName\nRescuee Coordinates: $lat, $lon"),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -181,10 +181,10 @@ class _OperationsPageState extends State<OperationsPage> {
       );
       // Save assignment in Firestore
       await FirebaseFirestore.instance
-          .collection("assignments")
-          .doc(userId)
-          .set({
-        "rescuer": rescuer,
+      .collection("assignments")
+      .doc(userId)
+      .set({
+        "rescuerId": rescuer,                    // ID // Name for display
         "lat": lat,
         "lon": lon,
         "timestamp": FieldValue.serverTimestamp(),
@@ -226,9 +226,11 @@ class _OperationsPageState extends State<OperationsPage> {
                     child: ListView.builder(
                       itemCount: receivedProvider.rescuers.length,
                       itemBuilder: (context, index) {
-                        final rescuerName = receivedProvider.rescuers[index];
+                        final rescuerName = receivedProvider.rescuers[index]["name"];
+                        final rescuerId   = receivedProvider.rescuers[index]["id"];
+
                         final isAvailable =
-                            receivedProvider.rescuerAvailability[rescuerName] ?? true;
+                            receivedProvider.rescuerAvailability[rescuerId] ?? true;
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6.0),
                           child: Row(
@@ -237,7 +239,7 @@ class _OperationsPageState extends State<OperationsPage> {
                               Expanded(
                                   child: Row(
                                     children: [
-                                      Text(rescuerName,
+                                      Text(rescuerName!,
                                       style: const TextStyle(fontSize: 18)),
                                       const SizedBox(width: 10,),
                                       Text(isAvailable ?
@@ -253,7 +255,7 @@ class _OperationsPageState extends State<OperationsPage> {
                               ElevatedButton(
                                 onPressed:  () {
                                         _assignRescuer(
-                                            rescuerName, userId, lat, lon);
+                                            rescuerId!, userId, lat, lon, rescuerName);
                                         Navigator.of(context).pop();
                                       }
                                     ,
