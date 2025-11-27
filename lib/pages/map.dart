@@ -56,7 +56,6 @@ List<Marker> _evacuationMarkers = [];
   void _startPolling() {
     _pollingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       refresh();
-    _initializeEvacuationMarkers();
     });
   }
   @override
@@ -376,22 +375,34 @@ List<Marker> _evacuationMarkers = [];
       _showErrorDialog('Error loading markers.');
     }
   }
-  void _initializeEvacuationMarkers() {
-  final provider = Provider.of<ReceivedJSONProvider>(context, listen: false);
+  void _initializeEvacuationMarkers() async {
+  // 1. Clear existing evacuation markers
   _markers.removeWhere((m) {
-      return m.key is ValueKey &&
-             (m.key as ValueKey).value.toString().contains("evac");
-    });
+    return m.key is ValueKey &&
+           (m.key as ValueKey).value.toString().contains("evac");
+  });
 
+  // 2. Get data from Firestore
+  final snapshot = await FirebaseFirestore.instance
+      .collection('evacuation_markers')
+      .get();
 
-  for (var i = 0; i < provider.evacuationMarkers.length; i++) {
-    final data = provider.evacuationMarkers[i];
-    final point = data['point'] as LatLng;
-    final name = data['name'] as String;
+  // 3. Add markers to the map
+  for (var i = 0; i < snapshot.docs.length; i++) {
+    final doc = snapshot.docs[i];
+    final data = doc.data();
+
+    final lat = data['lat']?.toDouble();
+    final lon = data['lon']?.toDouble();
+    final name = data['name'] ?? "Evacuation Center";
+
+    if (lat == null || lon == null) continue;
+
+    final point = LatLng(lat, lon);
 
     _markers.add(
       Marker(
-        key: ValueKey("evac_${point.latitude}_${point.longitude}_$i"),
+        key: ValueKey("evac_${lat}_${lon}_$i"),
         width: 80,
         height: 80,
         point: point,
@@ -412,7 +423,7 @@ List<Marker> _evacuationMarkers = [];
             ),
             const SizedBox(height: 2),
             Text(
-              name,
+              name.toString(),
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
@@ -425,6 +436,9 @@ List<Marker> _evacuationMarkers = [];
       ),
     );
   }
+
+  // 4. Update UI
+  setState(() {});
 }
   void _updateUserMarker(LatLng location) {
     if (_userMarker != null) {
