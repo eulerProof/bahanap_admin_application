@@ -42,7 +42,7 @@ class _OperationsPageState extends State<OperationsPage> {
     super.initState();
     receivedProvider =
         Provider.of<ReceivedJSONProvider>(context, listen: false);
-    _startReceivingMessages();
+    // _startReceivingMessages();
 
     // Initially mark all rescuers as available
 
@@ -286,7 +286,42 @@ class _OperationsPageState extends State<OperationsPage> {
       },
     );
   }
+  void _showFinishedOperationsDialog() {
+  final finishedOps =
+      Provider.of<ReceivedJSONProvider>(context, listen: false)
+          .finishedOperations;
 
+  showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text("Finished Rescue Operations"),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: finishedOps.isEmpty
+            ? const Text("No finished operations yet.")
+            : ListView.builder(
+                shrinkWrap: true,
+                itemCount: finishedOps.length,
+                itemBuilder: (context, index) {
+                  final op = finishedOps[index];
+                  return ListTile(
+                    title: Text("User: ${op['id']}"),
+                    subtitle: Text(
+                      "Rescuer: ${op['rescuer'] ?? 'Unknown'}",
+                    ),
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text("Close"),
+        ),
+      ],
+    ),
+  );
+}
   @override
   void dispose() {
     _timer?.cancel();
@@ -329,16 +364,34 @@ class _OperationsPageState extends State<OperationsPage> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(40, 20, 40, 40),
                     children: [
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 12),
-                        child: Text(
-                          "Rescue Operations",
-                          style: TextStyle(
-                            fontFamily: "SFPro",
-                            fontSize: 33,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "Rescue Operations",
+                              style: TextStyle(
+                                fontFamily: "SFPro",
+                                fontSize: 33,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
+                            ),
+
+                            // ⭐ BUTTON: opens finished operations dialog
+                            ElevatedButton.icon(
+                              onPressed: _showFinishedOperationsDialog,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2294C9),
+                              ),
+                              icon: const Icon(Icons.history, color: Colors.white),
+                              label: const Text(
+                                "Finished",
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       if (unassigned.isEmpty && assigned.isEmpty) ... [

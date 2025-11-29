@@ -13,9 +13,12 @@ class ReceivedJSONProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _messages = [];
   Map<String, dynamic>? _lastRawMessage; // store last received message
   Timer? _pollingTimer;
-
+  String? _lastConfirmedId;
+  final Map<String, String> _victimIdMapping = {};
+  int _victimCounter = 0;
   List<Map<String, dynamic>> get messages => _messages;
-
+  final List<Map<String, dynamic>> _finishedOperations = [];
+  List<Map<String, dynamic>> get finishedOperations => List.unmodifiable(_finishedOperations);
   // Rescuers
   final List<Map<String, String>> _rescuers = [
   {"name": "Roberto", "id": "5ONCWfgob8YfzrE7QM7TWkCVa863"},
@@ -40,66 +43,128 @@ class ReceivedJSONProvider extends ChangeNotifier {
       _fetchMessage();
     });
   }
+  void _handleConfirmed(Map<String, dynamic> msg) {
+    final id = msg["id"];
+    if (id == null) return;
 
+    // 🛑 Ignore repeated confirmations
+    if (_lastConfirmedId == id) return;
+    _lastConfirmedId = id;
+
+    _messages.removeWhere((m) => m["id"] == id);
+
+    _finishedOperations.add({
+      ...msg,
+      "completedAt": DateTime.now().toIso8601String(),
+    });
+
+    notifyListeners();
+  }
   // ----------------------- 🟢 Fetch from ESP32 -------------------------
   Future<void> _fetchMessage() async {
     try {
       const String esp32IP = "192.168.4.3";
-      final response =
-          await http.get(Uri.parse('http://$esp32IP/lastmessage'));
+      final response = await http.get(Uri.parse('http://$esp32IP/lastmessage'));
+
+      debugPrint('[_fetchMessage] status=${response.statusCode} body=${response.body}');
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        // keep raw string for dedupe
+        final rawBody = response.body.trim();
+        if (rawBody.isEmpty) return;
 
-        if (data is! Map<String, dynamic>) return;
+        final dataDynamic = jsonDecode(rawBody);
+        if (dataDynamic is! Map<String, dynamic>) return;
+        final Map<String, dynamic> data = Map<String, dynamic>.from(dataDynamic);
 
-        // Always add status if missing
+        // store the raw JSON string in data for later checks (but do not mutate it beyond this)
+        data['_rawJson'] = rawBody;
+
+        // If CONFIRMED -> pass to handler immediately
+        if (data["type"] == "CONFIRMED") {
+          _handleConfirmed(data);
+          return;
+        }
+
+        // ensure status exists
         data["status"] = data["status"] ?? "unassigned";
 
-        addMessage(data); // let the provider handle filtering & updating
+        // ---------- Victim auto-numbering (safe) ----------
+        if (data["id"] == "Victim") {
+          // if this raw payload is different from last processed raw payload AND
+          // there isn't already an active message with this raw JSON, increment
+          final isDuplicateRaw = (_lastRawJson != null && _lastRawJson == rawBody);
+          final existsInActiveList =
+              _messages.any((m) => m["_rawJson"] == rawBody);
+
+          if (!isDuplicateRaw && !existsInActiveList) {
+            _victimCounter++;
+          }
+
+          data["id"] = "Victim $_victimCounter";
+        }
+
+        // push into addMessage (which will handle dedupe by raw JSON as well)
+        addMessage(data);
       } else {
-        debugPrint("Failed to fetch: ${response.statusCode}");
+        debugPrint("Failed to fetch: ${response.statusCode} ${response.body}");
       }
     } catch (e) {
-      debugPrint("Error: $e");
+      debugPrint("Error in _fetchMessage: $e");
     }
   }
 
-  // ----------------------- 🟢 Add message safely ------------------------
+  // ----------------------- 🟢 Add message safely (robust) ------------------------
+  String? _lastRawJson; // store raw JSON string for dedupe
+
   void addMessage(Map<String, dynamic> message) {
-    final newMessageJson = jsonEncode(message);
+    try {
+      // use raw JSON (if available) for consistent dedupe comparisons
+      final rawJson = message.containsKey('_rawJson')
+          ? message['_rawJson'].toString()
+          : jsonEncode(message);
 
-    // --------- 1. Ignore exact duplicate messages from LoRa ----------
-    if (_lastRawMessage != null &&
-        jsonEncode(_lastRawMessage) == newMessageJson) {
-      return;
-    }
-
-    _lastRawMessage = message;
-
-    // --------- 2. Fix missing/null IDs coming from LoRa --------------
-    final msgId =  message["id"];
-
-    message["id"] = msgId;
-
-    // --------- 3. Insert or update -----------------------------------
-    final index = _messages.indexWhere((m) => m["id"] == msgId);
-
-    bool changed = false;
-
-    if (index == -1) {
-      _messages.add(message); // brand new message
-      changed = true;
-    } else {
-      // Only update if contents actually changed
-      final oldJson = jsonEncode(_messages[index]);
-      if (oldJson != newMessageJson) {
-        _messages[index] = message;
-        changed = true;
+      // If CONFIRMED
+      if (message["type"] == "CONFIRMED") {
+        _handleConfirmed(message);
+        return;
       }
-    }
 
-    if (changed) notifyListeners();
+      // 1) Deduplicate by raw JSON string
+      if (_lastRawJson != null && _lastRawJson == rawJson) {
+        // exact duplicate of last processed raw packet -> ignore
+        return;
+      }
+
+      // 2) Prevent adding duplicates based on the final ID
+      final msgId = message["id"] ?? _generateFallbackId(message);
+
+      // Clean up: ensure message contains the raw JSON so we can check later
+      message['_rawJson'] = rawJson;
+
+      final newMessageJson = jsonEncode(message);
+
+      final index = _messages.indexWhere((m) => m["id"] == msgId);
+      bool changed = false;
+
+      if (index == -1) {
+        _messages.add(message);
+        changed = true;
+      } else {
+        final oldJson = jsonEncode(_messages[index]);
+        if (oldJson != newMessageJson) {
+          _messages[index] = message;
+          changed = true;
+        }
+      }
+
+      // update lastRawJson only AFTER we accept (or update) message
+      _lastRawJson = rawJson;
+
+      if (changed) notifyListeners();
+    } catch (e) {
+      debugPrint('Error in addMessage: $e');
+    }
   }
 
   // Generates a fallback unique ID when LoRa sends "id":"null"

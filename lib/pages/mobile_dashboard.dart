@@ -141,9 +141,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: DropdownButtonHideUnderline(
-                              child: isLoadingWaterLevel
-                                ? const CircularProgressIndicator()
-                                : DropdownButton<String>(
+                              child: DropdownButton<String>(
                                 value: selectedCategory,
                                 isExpanded:
                                     true, // makes the dropdown take full width
@@ -239,75 +237,98 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                   final guidelineText = textController.text.trim();
                                   if (guidelineText.isEmpty) return;
 
-                                  // JSON payload
                                   final jsonData = {
-                                    "category": selectedCategory,  // "pre", "during", or "post"
+                                    "category": selectedCategory,
                                     "content": guidelineText,
                                     "timestamp": DateTime.now().toIso8601String(),
                                   };
 
+                                  const String esp32IP = "192.168.4.3"; // double-check this
+                                  final esp32Url = Uri.parse('http://$esp32IP/message');
+
                                   try {
-                                    // --------------------------------------------------------
-                                    // 1. CHECK INTERNET CONNECTIVITY
-                                    // --------------------------------------------------------
-                                    final connectivity = await Connectivity().checkConnectivity();
-                                    final bool hasInternet = connectivity != ConnectivityResult.none;
+                                    // 1) Try to POST to ESP32 first (short timeout)
+                                    final http.Response espResp = await http
+                                        .post(
+                                          esp32Url,
+                                          headers: {"Content-Type": "application/json"},
+                                          body: jsonEncode(jsonData),
+                                        )
+                                        .timeout(const Duration(seconds: 6));
 
-                                    if (hasInternet) {
-                                      // ========================================================
-                                      // ONLINE → SEND TO FIRESTORE
-                                      // Path: /disaster_guidelines/guidelines/{category}/{autoID}
-                                      // ========================================================
+                                    debugPrint('ESP32 status: ${espResp.statusCode}');
+                                    debugPrint('ESP32 body: ${espResp.body}');
 
+                                    if (espResp.statusCode == 200) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text("Guideline sent to ESP32")),
+                                      );
+                                    } else {
+                                      // ESP responded but not OK — fallback to Firestore and inform user
+                                      debugPrint('ESP32 returned non-200. Falling back to Firestore.');
                                       await FirebaseFirestore.instance
                                           .collection("disaster_guidelines")
                                           .doc("guidelines")
-                                          .collection(selectedCategory) // "pre" | "during" | "post"
+                                          .collection(selectedCategory)
                                           .add({
                                         "category": selectedCategory,
                                         "content": guidelineText,
                                         "timestamp": FieldValue.serverTimestamp(),
+                                        "source": "fallback_esp_${espResp.statusCode}",
                                       });
 
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text("Guideline saved to Firebase under $selectedCategory"),
-                                        ),
+                                        SnackBar(content: Text("ESP32 error ${espResp.statusCode}. Saved to Firestore.")),
                                       );
-
-                                    } else {
-                                      // ========================================================
-                                      // OFFLINE → SEND TO ESP32
-                                      // ========================================================
-                                      const String esp32IP = "192.168.4.3";
-
-                                      final response = await http.post(
-                                        Uri.parse('http://$esp32IP/message'),
-                                        headers: {"Content-Type": "application/json"},
-                                        body: jsonEncode(jsonData),
-                                      );
-
-                                      if (response.statusCode == 200) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text("Guideline sent to ESP32")),
-                                        );
-                                      } else {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text("ESP32 Error: ${response.statusCode}"),
-                                          ),
-                                        );
-                                      }
                                     }
+                                  } on TimeoutException catch (te) {
+                                    debugPrint('ESP32 timeout: $te');
+                                    // fallback to Firestore
+                                    await FirebaseFirestore.instance
+                                        .collection("disaster_guidelines")
+                                        .doc("guidelines")
+                                        .collection(selectedCategory)
+                                        .add({
+                                      "category": selectedCategory,
+                                      "content": guidelineText,
+                                      "timestamp": FieldValue.serverTimestamp(),
+                                      "source": "fallback_timeout",
+                                    });
 
-                                    // Reset UI
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text("ESP32 timed out. Saved to Firestore.")),
+                                    );
+                                  } catch (e, st) {
+                                    // other network errors: unreachable host, socket exception, etc.
+                                    debugPrint('Error sending to ESP32: $e\n$st');
+
+                                    // fallback to Firestore
+                                    try {
+                                      await FirebaseFirestore.instance
+                                          .collection("disaster_guidelines")
+                                          .doc("guidelines")
+                                          .collection(selectedCategory)
+                                          .add({
+                                        "category": selectedCategory,
+                                        "content": guidelineText,
+                                        "timestamp": FieldValue.serverTimestamp(),
+                                        "source": "fallback_error",
+                                        "error": e.toString(),
+                                      });
+
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text("Error sending to ESP32. Saved to Firestore: $e")),
+                                      );
+                                    } catch (fsErr) {
+                                      debugPrint('Failed to save to Firestore: $fsErr');
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text("Failed to save: $fsErr")),
+                                      );
+                                    }
+                                  } finally {
+                                    // Reset UI regardless of path
                                     textController.clear();
                                     setState(() => showAddPage = false);
-
-                                  } catch (e) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text("Error: $e")),
-                                    );
                                   }
                                 },
                                 style: ElevatedButton.styleFrom(

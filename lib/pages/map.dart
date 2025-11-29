@@ -628,7 +628,7 @@ List<Marker> _evacuationMarkers = [];
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(), // Cancel
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black),),
           ),
           ElevatedButton(
             onPressed: () {
@@ -636,7 +636,17 @@ List<Marker> _evacuationMarkers = [];
                 Navigator.of(context).pop(_nameController.text.trim());
               }
             },
-            child: const Text('Save'),
+            style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.all(15),
+                          backgroundColor: const Color(0xff32ade6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(20), // Rounded corners
+                            side: const BorderSide(
+                                color: Colors.blue, width: 0.2), // Border
+                          ),
+                        ),
+            child: const Text('Save', style: TextStyle(color: Colors.white),),
           ),
         ],
       ),
@@ -710,8 +720,9 @@ List<Marker> _evacuationMarkers = [];
                                 color: Colors.blue, width: 0.2), // Border
                           ),
                         ),
-                        child: const Text("Refresh"),
+                        child: const Text("Refresh", style: const TextStyle(color: Colors.white),),
                       ),
+                      const SizedBox(width: 15),
                       ElevatedButton(
                         onPressed: () {
                           setState(() {
@@ -729,7 +740,7 @@ List<Marker> _evacuationMarkers = [];
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        child: const Text("Add Evacuation Marker"),
+                        child: const Text("Add Evacuation Marker", style: const TextStyle(color: Colors.white),),
                       ),
                       IconButton(
                         icon: const Icon(Icons.zoom_in),
