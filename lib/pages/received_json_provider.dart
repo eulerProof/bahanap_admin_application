@@ -28,7 +28,7 @@ class ReceivedJSONProvider extends ChangeNotifier {
 
   // Rescuers Data...
   final List<Map<String, String>> _rescuers = [
-    {"name": "Roberto", "id": "5ONCWfgob8YfzrE7QM7TWkCVa863"},
+    {},
     // ... (your other rescuers)
   ];
   final Map<String, String> _assignedRescuers = {}; 
@@ -37,8 +37,32 @@ class ReceivedJSONProvider extends ChangeNotifier {
   // ----------------------- 🟢 Initialize -----------------------
   ReceivedJSONProvider() {
     _startPolling();
+    fetchRescuersFromFirestore();
   }
 
+  Future<void> fetchRescuersFromFirestore() async {
+  try {
+    final snapshot = await FirebaseFirestore.instance.collection('profiles').get();
+
+    _rescuers.clear(); // Clear default hardcoded list
+
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      if (data['role'] == 'Rescuer') {
+        _rescuers.add({
+          "name": data['Name'] ?? "Unknown", // Replace with actual username field
+          "id": doc.id,
+        });
+        _rescuerAvailability[doc.id] = true; // Mark all as available initially
+      }
+    }
+
+    notifyListeners();
+    debugPrint("Rescuers fetched from Firestore: ${_rescuers.length}");
+  } catch (e) {
+    debugPrint("Error fetching rescuers from Firestore: $e");
+  }
+}
   void _startPolling() {
     _pollingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _fetchSOS();

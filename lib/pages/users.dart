@@ -16,7 +16,7 @@ class _UsersPageState extends State<UsersPage> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder(
-        stream: FirebaseFirestore.instance.collection("profiles").snapshots(),
+        stream: FirebaseFirestore.instance.collection("profiles").where("role", isEqualTo: "Rescuee").snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(

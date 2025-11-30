@@ -317,7 +317,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                       });
 
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text("Error sending to ESP32. Saved to Firestore: $e")),
+                                        SnackBar(content: Text("Saved to Firestore: $e")),
                                       );
                                     } catch (fsErr) {
                                       debugPrint('Failed to save to Firestore: $fsErr');
