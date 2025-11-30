@@ -156,7 +156,7 @@ class _OperationsPageState extends State<OperationsPage> {
         
     // Send JSON to ESP32
     try {
-      final payload = {"latitude": lat, "longitude": lon, "rescuer": rescuer, "uid": userId};
+       final payload = {"latitude": lat, "longitude": lon, "rescuer": rescuer, "uid": userId};
       const esp32IP = "192.168.4.3";
       await http
           .post(
@@ -185,8 +185,8 @@ class _OperationsPageState extends State<OperationsPage> {
       .doc(userId)
       .set({
         "rescuerId": rescuer,                    // ID // Name for display
-        "lat": lat,
-        "lon": lon,
+        "latitude": lat,
+        "longitude": lon,
         "timestamp": FieldValue.serverTimestamp(),
       });
 

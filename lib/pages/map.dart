@@ -67,7 +67,9 @@ List<Marker> _evacuationMarkers = [];
 
   void refresh(){
     _initializeLorawanMarker();
+    _initializeRescuerMarkers();
   }
+  
   Future<void> _assignRescuer(
       String rescuer, String userId, double lat, double lon, String rescuerName) async {
         
@@ -313,7 +315,52 @@ List<Marker> _evacuationMarkers = [];
     });
   }
 }
-  
+  void _initializeRescuerMarkers() {
+  // Remove old rescuer markers
+  _markers.removeWhere((m) =>
+      m.key is ValueKey &&
+      (m.key as ValueKey).value.toString().contains("rescuer"));
+
+  for (var r in provider.rescuerLocations) {
+    final id = r["id"];
+    final lat = r["lat"];
+    final lon = r["lon"];
+
+    _markers.add(
+      Marker(
+        key: ValueKey("rescuer_${id}_${lat}_${lon}"),
+        width: 90,
+        height: 90,
+        point: LatLng(lat, lon),
+        child: Column(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.blue, width: 3),
+              ),
+              child: const CircleAvatar(
+                radius: 14,
+                backgroundImage: AssetImage('assets/images/rescuer.png'),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "$id (Rescuer)",
+              style: const TextStyle(
+                color: Colors.blue,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  setState(() {});
+}
   void _initializeMarkers() async {
     _markers.clear();
     final String currentUserUid = FirebaseAuth.instance.currentUser?.uid ?? '';

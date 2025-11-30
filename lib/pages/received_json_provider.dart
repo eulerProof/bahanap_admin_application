@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
@@ -11,168 +10,183 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 class ReceivedJSONProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _messages = [];
-  Map<String, dynamic>? _lastRawMessage; // store last received message
   Timer? _pollingTimer;
   String? _lastConfirmedId;
-  final Map<String, String> _victimIdMapping = {};
-  int _victimCounter = 0;
+  final List<Map<String, dynamic>> _rescuerLocations = [];
+  final List<Map<String, dynamic>> _evacuationMarkers = [];
+  // We use this to prevent processing the exact same packet processing multiple times in one millisecond
+  String? _lastProcessedRawJson; 
+
+  // ----------------------- 🟢 Getters -----------------------
   List<Map<String, dynamic>> get messages => _messages;
+
   final List<Map<String, dynamic>> _finishedOperations = [];
   List<Map<String, dynamic>> get finishedOperations => List.unmodifiable(_finishedOperations);
-  // Rescuers
-  final List<Map<String, String>> _rescuers = [
-  {"name": "Roberto", "id": "5ONCWfgob8YfzrE7QM7TWkCVa863"},
-  {"name": "John", "id": ""},
-  {"name": "Sergei", "id": ""},
-  {"name": "Joshua", "id": ""},
-  {"name": "BJ", "id": ""},
-  {"name": "Achilles", "id": ""},
-  {"name": "Paulo", "id": ""},
-  {"name": "Ben", "id": ""},
-];
-  final Map<String, String> _assignedRescuers = {}; // userId -> rescuer
-  final Map<String, bool> _rescuerAvailability = {}; // rescuerId -> available?
 
-  // ----------------------- 🟢 Initialize polling -----------------------
+
+  List<Map<String, dynamic>> get rescuerLocations => List.unmodifiable(_rescuerLocations);
+
+  // Rescuers Data...
+  final List<Map<String, String>> _rescuers = [
+    {"name": "Roberto", "id": "5ONCWfgob8YfzrE7QM7TWkCVa863"},
+    // ... (your other rescuers)
+  ];
+  final Map<String, String> _assignedRescuers = {}; 
+  final Map<String, bool> _rescuerAvailability = {}; 
+
+  // ----------------------- 🟢 Initialize -----------------------
   ReceivedJSONProvider() {
-    _startPolling(); // start as soon as provider is created
+    _startPolling();
   }
 
   void _startPolling() {
-    _pollingTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
-      _fetchMessage();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _fetchSOS();
+      _fetchAssignment();
+      _fetchRescuerLocation();
+      _fetchLastMessage();
     });
   }
-  void _handleConfirmed(Map<String, dynamic> msg) {
-    final id = msg["id"];
+
+  // ----------------------- 🟢 1. The Confirmation Logic -----------------------
+  // When a confirmation comes in, we must archive the UNIQUE identifying info
+  // (Timestamp or Raw JSON) of the active message so we don't pick it up again.
+  void _handleConfirmed(Map<String, dynamic> confirmMsg) {
+    final id = confirmMsg["id"];
     if (id == null) return;
 
-    // 🛑 Ignore repeated confirmations
     if (_lastConfirmedId == id) return;
     _lastConfirmedId = id;
 
-    _messages.removeWhere((m) => m["id"] == id);
+    // A. Find the ACTIVE message that corresponds to this ID
+    // We need to grab its timestamp/rawJson before we delete it.
+    final existingIndex = _messages.indexWhere((m) => m["id"] == id);
+    
+    Map<String, dynamic> originalData = {};
+    if (existingIndex != -1) {
+      originalData = _messages[existingIndex];
+      // Remove from active list
+      _messages.removeAt(existingIndex);
+    } else {
+      // If not in active list, we can't do much, but we proceed to finish just in case
+      debugPrint("Warning: Confirmed ID $id was not found in active messages.");
+    }
 
+    // B. Add to finished operations with the CRITICAL unique identifiers
     _finishedOperations.add({
-      ...msg,
+      ...confirmMsg,
       "completedAt": DateTime.now().toIso8601String(),
+      // 🛑 SAVE THE FINGERPRINTS
+      // If the SOS had a timestamp, save it. If not, save the raw string.
+      "sos_timestamp": originalData["timestamp"], 
+      "_rawJson": originalData["_rawJson"], 
+      "lat": originalData["lat"],
+      "lon": originalData["lon"],
     });
 
     notifyListeners();
   }
-  // ----------------------- 🟢 Fetch from ESP32 -------------------------
-  Future<void> _fetchMessage() async {
+
+  // ----------------------- 🟢 2. The Fetch SOS Logic -----------------------
+  int _victimCounter = 0;
+
+  Future<void> _fetchSOS() async {
     try {
-      const String esp32IP = "192.168.4.3";
-      final response = await http.get(Uri.parse('http://$esp32IP/lastmessage'));
+      const esp32IP = "192.168.4.3";
+      final response = await http.get(Uri.parse('http://$esp32IP/lastsos'));
 
-      debugPrint('[_fetchMessage] status=${response.statusCode} body=${response.body}');
+      if (response.statusCode != 200) return;
+      final rawBody = response.body.trim();
+      if (rawBody.isEmpty) return;
 
-      if (response.statusCode == 200) {
-        // keep raw string for dedupe
-        final rawBody = response.body.trim();
-        if (rawBody.isEmpty) return;
-
-        final dataDynamic = jsonDecode(rawBody);
-        if (dataDynamic is! Map<String, dynamic>) return;
-        final Map<String, dynamic> data = Map<String, dynamic>.from(dataDynamic);
-
-        // store the raw JSON string in data for later checks (but do not mutate it beyond this)
-        data['_rawJson'] = rawBody;
-
-        // If CONFIRMED -> pass to handler immediately
-        if (data["type"] == "CONFIRMED") {
-          _handleConfirmed(data);
-          return;
+      final data = jsonDecode(rawBody);
+      data["_rawJson"] = rawBody; // Attach raw body for comparison
+      
+      // 🛑 GUARD 1: TIMESTAMP / RAW JSON CHECK
+      // Check if this specific signal is already in _finishedOperations
+      final incomingTimestamp = data["timestamp"]; 
+      
+      final isAlreadyFinished = _finishedOperations.any((finishedOp) {
+        // A. If both have timestamps, match them exactly.
+        if (incomingTimestamp != null && finishedOp["sos_timestamp"] != null) {
+          return incomingTimestamp == finishedOp["sos_timestamp"];
         }
+        // B. Fallback: Match the Raw JSON string exactly.
+        // (The ESP32 sends the exact same string until cleared)
+        return rawBody == finishedOp["_rawJson"];
+      });
 
-        // ensure status exists
-        data["status"] = data["status"] ?? "unassigned";
+      if (isAlreadyFinished) {
+        return; // STOP. Do not add.
+      }
 
-        // ---------- Victim auto-numbering (safe) ----------
+      if (data["type"] == "SOS") {
         if (data["id"] == "Victim") {
-          // if this raw payload is different from last processed raw payload AND
-          // there isn't already an active message with this raw JSON, increment
-          final isDuplicateRaw = (_lastRawJson != null && _lastRawJson == rawBody);
-          final existsInActiveList =
-              _messages.any((m) => m["_rawJson"] == rawBody);
+          
+          // 🛑 GUARD 2: IS IT ALREADY ACTIVE?
+          // We check if this specific timestamp/rawJson is already in the active list
+          final activeIndex = _messages.indexWhere((m) {
+             if (incomingTimestamp != null && m["timestamp"] != null) {
+               return incomingTimestamp == m["timestamp"];
+             }
+             return rawBody == m["_rawJson"];
+          });
 
-          if (!isDuplicateRaw && !existsInActiveList) {
+          if (activeIndex != -1) {
+            // IT EXISTS: Update existing victim, keep the same ID
+            data["id"] = _messages[activeIndex]["id"];
+          } else {
+            // NEW: Increment counter and assign new ID
             _victimCounter++;
+            data["id"] = "Victim $_victimCounter";
           }
-
-          data["id"] = "Victim $_victimCounter";
         }
-
-        // push into addMessage (which will handle dedupe by raw JSON as well)
+        
         addMessage(data);
-      } else {
-        debugPrint("Failed to fetch: ${response.statusCode} ${response.body}");
       }
     } catch (e) {
-      debugPrint("Error in _fetchMessage: $e");
+      debugPrint("Error in _fetchSOS: $e");
     }
   }
 
-  // ----------------------- 🟢 Add message safely (robust) ------------------------
-  String? _lastRawJson; // store raw JSON string for dedupe
-
+  // ----------------------- 🟢 3. Add Message -----------------------
+  // Simplified: logic is now handled in _fetchSOS, so we just update/add.
   void addMessage(Map<String, dynamic> message) {
     try {
-      // use raw JSON (if available) for consistent dedupe comparisons
-      final rawJson = message.containsKey('_rawJson')
-          ? message['_rawJson'].toString()
-          : jsonEncode(message);
-
-      // If CONFIRMED
       if (message["type"] == "CONFIRMED") {
         _handleConfirmed(message);
         return;
       }
 
-      // 1) Deduplicate by raw JSON string
-      if (_lastRawJson != null && _lastRawJson == rawJson) {
-        // exact duplicate of last processed raw packet -> ignore
-        return;
+      final msgId = message["id"] ?? "unknown";
+      if (!message.containsKey("status")) {
+        message["status"] = "unassigned";
       }
 
-      // 2) Prevent adding duplicates based on the final ID
-      final msgId = message["id"] ?? _generateFallbackId(message);
-
-      // Clean up: ensure message contains the raw JSON so we can check later
-      message['_rawJson'] = rawJson;
-
-      final newMessageJson = jsonEncode(message);
-
       final index = _messages.indexWhere((m) => m["id"] == msgId);
-      bool changed = false;
 
       if (index == -1) {
         _messages.add(message);
-        changed = true;
+        notifyListeners();
       } else {
+        // Check for changes before notifying to save performance
         final oldJson = jsonEncode(_messages[index]);
-        if (oldJson != newMessageJson) {
-          _messages[index] = message;
-          changed = true;
+        final newJson = jsonEncode(message);
+        if (oldJson != newJson) {
+           _messages[index] = message;
+           notifyListeners();
         }
       }
-
-      // update lastRawJson only AFTER we accept (or update) message
-      _lastRawJson = rawJson;
-
-      if (changed) notifyListeners();
     } catch (e) {
       debugPrint('Error in addMessage: $e');
     }
   }
 
-  // Generates a fallback unique ID when LoRa sends "id":"null"
-  String _generateFallbackId(Map<String, dynamic> msg) {
-    return "auto_${msg.hashCode}_${DateTime.now().millisecondsSinceEpoch}";
-  }
-
-  // ------------------------- 🟡 Existing status logic ------------------------
+  // ... (Keep your existing updateStatus, assignRescuer, etc. methods exactly as they were) ...
+  
+  // ... (Keep your dispose, clear, evacuationMarkers, etc.) ...
+  
+  // Boilerplate needed for code to run:
   void updateStatus(String userId, String status) {
     final index = _messages.indexWhere((m) => m['id'] == userId);
     if (index != -1) {
@@ -180,23 +194,18 @@ class ReceivedJSONProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
-
-  List<Map<String, String>> get rescuers => List.unmodifiable(_rescuers);
-
-  Map<String, bool> get rescuerAvailability =>
-      Map.unmodifiable(_rescuerAvailability);
-
-  Map<String, String> get assignedRescuers =>
-      Map.unmodifiable(_assignedRescuers);
-
-  void assignRescuer(String userId, String rescuerName) {
+   List<Map<String, String>> get rescuers => List.unmodifiable(_rescuers);
+   Map<String, bool> get rescuerAvailability => Map.unmodifiable(_rescuerAvailability);
+   Map<String, String> get assignedRescuers => Map.unmodifiable(_assignedRescuers);
+   
+   void assignRescuer(String userId, String rescuerName) {
     _assignedRescuers[userId] = rescuerName;
     _rescuerAvailability[rescuerName] = false;
     updateStatus(userId, "assigned");
     notifyListeners();
-  }
-
-  void unassignRescuer(String userId) {
+   }
+   
+   void unassignRescuer(String userId) {
     final rescuerName = _assignedRescuers[userId];
     if (rescuerName != null) {
       _rescuerAvailability[rescuerName] = true;
@@ -204,40 +213,126 @@ class ReceivedJSONProvider extends ChangeNotifier {
       updateStatus(userId, "unassigned");
       notifyListeners();
     }
+   }
+   
+   void clear() {
+    _messages.clear();
+    notifyListeners();
+   }
+   
+   // (Include the rest of your methods like _fetchAssignment, _fetchRescuerLocation, _fetchLastMessage etc.)
+   // Ensure those methods call addMessage or _handleConfirmed appropriately.
+   
+     Future<void> _fetchLastMessage() async {
+     try {
+       const esp32IP = "192.168.4.3";
+       final response = await http.get(Uri.parse('http://$esp32IP/lastmessage'));
+
+       if (response.statusCode != 200) return;
+       final raw = response.body.trim();
+       if (raw.isEmpty) return;
+       
+       // Dedupe repeating confirmed messages
+       if (_lastProcessedRawJson == raw) return;
+       _lastProcessedRawJson = raw;
+
+       final data = jsonDecode(raw);
+       if (data["type"] == "CONFIRMED") {
+         _handleConfirmed(data);
+       }
+     } catch (e) {
+       debugPrint("Error fetching last message: $e");
+     }
+   }
+
+  
+  // (Include _fetchAssignment and _fetchRescuerLocation here...)
+  Future<void> _fetchAssignment() async {
+    try {
+      const esp32IP = "192.168.4.3";
+      final response = await http.get(Uri.parse('http://$esp32IP/lastassign'));
+
+      if (response.statusCode != 200) return;
+      final raw = response.body.trim();
+      if (raw.isEmpty) return;
+
+      final data = jsonDecode(raw);
+      data["_rawJson"] = raw;
+
+      if (data["type"] == "ASSIGN") {
+        addMessage(data);
+      }
+    } catch (e) {
+      debugPrint("Error in _fetchAssignment: $e");
+    }
   }
 
+  // ----------------------- 🟡 6. Original Function: Rescuer Location -----------------------
+  Future<void> _fetchRescuerLocation() async {
+    try {
+      const esp32IP = "192.168.4.3";
+      final response = await http.get(Uri.parse('http://$esp32IP/lastlocation'));
 
-  final List<Map<String, dynamic>> _evacuationMarkers = [];
+      if (response.statusCode != 200) return;
+      final raw = response.body.trim();
+      if (raw.isEmpty) return;
 
-List<Map<String, dynamic>> get evacuationMarkers =>
-    List.unmodifiable(_evacuationMarkers);
+      final data = jsonDecode(raw);
 
-void addEvacuationMarker(LatLng point, {String name = "Evacuation Center"}) {
-  final markerData = {
-    'point': point,
-    'name': name,
-    'timestamp': DateTime.now(),
-  };
-  _evacuationMarkers.add(markerData);
-  notifyListeners();
+      if (data["type"] == "RESCUER_LOCATION") {
+        final id = data["uid"] ?? data["id"];
+        final lat = (data["lat"] ?? 0).toDouble();
+        final lon = (data["lon"] ?? 0).toDouble();
 
-  FirebaseFirestore.instance.collection('evacuation_markers').add({
-    'lat': point.latitude,
-    'lon': point.longitude,
-    'name': name,
-    'timestamp': FieldValue.serverTimestamp(),
-  }).then((_) => print("Evacuation marker uploaded"))
-    .catchError((e) => print("Error uploading marker: $e"));
-}
-  void clear() {
-    _messages.clear();
-    _lastRawMessage = null;
+        if (id != null && lat != 0 && lon != 0) {
+          updateRescuerLocation(id, lat, lon);
+        }
+      }
+    } catch (e) {
+      debugPrint("Error in _fetchRescuerLocation: $e");
+    }
+  }
+
+  // ----------------------- 🟡 7. Original Function: Update Rescuer List -----------------------
+  void updateRescuerLocation(String rescuerId, double lat, double lon) {
+    final index = _rescuerLocations.indexWhere((r) => r["id"] == rescuerId);
+
+    final newEntry = {
+      "id": rescuerId,
+      "lat": lat,
+      "lon": lon,
+      "timestamp": DateTime.now().toIso8601String(),
+    };
+
+    if (index == -1) {
+      _rescuerLocations.add(newEntry);
+    } else {
+      _rescuerLocations[index] = newEntry;
+    }
+
     notifyListeners();
   }
+   void addEvacuationMarker(LatLng point, {String name = "Evacuation Center"}) {
+    final markerData = {
+      'point': point,
+      'name': name,
+      'timestamp': DateTime.now(),
+    };
+    _evacuationMarkers.add(markerData);
+    notifyListeners();
 
-  @override
-  void dispose() {
-    _pollingTimer?.cancel();
-    super.dispose();
+    FirebaseFirestore.instance.collection('evacuation_markers').add({
+      'lat': point.latitude,
+      'lon': point.longitude,
+      'name': name,
+      'timestamp': FieldValue.serverTimestamp(),
+    }).then((_) => print("Evacuation marker uploaded"))
+      .catchError((e) => print("Error uploading marker: $e"));
   }
+   
+   @override
+   void dispose() {
+     _pollingTimer?.cancel();
+     super.dispose();
+   }
 }
