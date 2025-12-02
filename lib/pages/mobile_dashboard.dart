@@ -8,10 +8,8 @@ import 'map.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:http/http.dart' as http;
 import 'operations.dart';
 
 class MobileDashboardPage extends StatefulWidget {
@@ -29,77 +27,208 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
   bool showAddPage = false;
   bool isLoadingWaterLevel = true;
   String selectedCategory = "pre_disaster"; // default dropdown value
+
+  // ---------------------------------------------------------------------------
+  // 🟢 INIT & WATER LEVEL LOGIC
+  // ---------------------------------------------------------------------------
+  @override
+  void initState() {
+    super.initState();
+    getWaterLevelFromFirebase();
+  }
+
+  void getWaterLevelFromFirebase() async {
+    try {
+      final water = await FirebaseFirestore.instance
+          .collection('disaster_guidelines')
+          .doc("water_level")
+          .get();
+      if (water.exists && mounted) {
+        setState(() {
+          value = water.data()?['level'] ?? "Low";
+          isLoadingWaterLevel = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching water level: $e");
+    }
+  }
+
   DropdownMenuItem<String> buildMenuItem(String waterLev) => DropdownMenuItem(
         value: waterLev,
         child: Text(
           waterLev,
         ),
       );
-  final guidelines = [
-    {"guideline": "SOmething", "category": "pre-disaster"}
-  ];
+
   @override
-  void initState() {
-    super.initState();
-    getWaterLevelFromFirebase();
-  }
-  void getWaterLevelFromFirebase() async {
-    final water = await FirebaseFirestore.instance
-      .collection('disaster_guidelines').doc("water_level")
-      .get();
-    if (water.exists) {
-      setState(() {
-        value = water.data()?['level'] ?? "Low";
-        isLoadingWaterLevel = false;
-      });
-    }
-  }
-  Widget _buildCategory(String title, List<String> items) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        title,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 8),
-      if (items.isEmpty)
-        const Text("• No guidelines added yet."),
-      for (final text in items)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Text(
-            "• $text",
-            style: const TextStyle(fontSize: 14),
-          ),
-        ),
-    ],
-  );
-}
-  Future<Map<String, List<String>>> _fetchGuidelineCategories() async {
-    final firestore = FirebaseFirestore.instance;
-
-    Future<List<String>> fetchCategory(String collectionName) async {
-      final snap = await firestore
-          .collection('disaster_guidelines')
-          .doc('guidelines')
-          .collection(collectionName)
-          .orderBy('timestamp', descending: false)
-          .get();
-
-      return snap.docs.map((d) => d['content'] as String).toList();
-    }
-
-    return {
-      "pre_disaster": await fetchCategory("pre_disaster"),
-      "during_disaster": await fetchCategory("during_disaster"),
-      "post_disaster": await fetchCategory("post_disaster"),
-    };
-  }
-   @override
   void dispose() {
+    _textController.dispose();
     super.dispose();
   }
+
+  // ---------------------------------------------------------------------------
+  // 🟢 NEW: FIRESTORE ACTIONS (EDIT & DELETE)
+  // ---------------------------------------------------------------------------
+
+  void _deleteGuideline(String collectionId, String docId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Guideline"),
+        content: const Text("Are you sure you want to delete this guideline?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              await FirebaseFirestore.instance
+                  .collection('disaster_guidelines')
+                  .doc('guidelines')
+                  .collection(collectionId)
+                  .doc(docId)
+                  .delete();
+              
+              if (mounted) Navigator.pop(context);
+            },
+            child: const Text("Delete", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _editGuideline(String collectionId, String docId, String currentContent) {
+    final editController = TextEditingController(text: currentContent);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Edit Guideline"),
+        content: TextField(
+          controller: editController,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            labelText: "Content",
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff2294C9)),
+            onPressed: () async {
+              if (editController.text.trim().isNotEmpty) {
+                await FirebaseFirestore.instance
+                    .collection('disaster_guidelines')
+                    .doc('guidelines')
+                    .collection(collectionId)
+                    .doc(docId)
+                    .update({
+                      'content': editController.text.trim(),
+                    });
+                
+                if (mounted) Navigator.pop(context);
+              }
+            },
+            child: const Text("Save", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 🟢 NEW: DYNAMIC UI BUILDERS (STREAMS)
+  // ---------------------------------------------------------------------------
+
+  // 1. The Stream Listener (Replaces your old FutureBuilder)
+  Widget _buildGuidelineStream(String title, String collectionId) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('disaster_guidelines')
+          .doc('guidelines')
+          .collection(collectionId)
+          .orderBy('timestamp', descending: false)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return const Text("Error loading data");
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: Padding(
+            padding: EdgeInsets.all(8.0),
+            child: CircularProgressIndicator(),
+          ));
+        }
+
+        // Convert docs to a list of maps
+        final List<Map<String, dynamic>> items = snapshot.data!.docs.map((doc) {
+          return {
+            'id': doc.id,
+            'content': doc['content'] as String? ?? "",
+          };
+        }).toList();
+
+        return _buildCategory(title, collectionId, items);
+      },
+    );
+  }
+
+  // 2. The Visual Builder (Now includes Edit/Delete buttons)
+  Widget _buildCategory(String title, String collectionId, List<Map<String, dynamic>> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        if (items.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: Text("• No guidelines added yet.", style: TextStyle(color: Colors.grey)),
+          ),
+        for (final item in items)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "• ${item['content']}",
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Color(0xff2294C9), size: 20),
+                  onPressed: () => _editGuideline(collectionId, item['id'], item['content']),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                  onPressed: () => _deleteGuideline(collectionId, item['id']),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 🟢 POPUP DIALOG LOGIC
+  // ---------------------------------------------------------------------------
 
   void showEditPopup(BuildContext context) {
     showDialog(
@@ -109,8 +238,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setState) {
-            TextEditingController textController = TextEditingController();
-
+            // Note: _textController is defined at class level, but we can reuse it
             return Dialog(
               insetPadding: const EdgeInsets.all(20),
               backgroundColor: Colors.white,
@@ -122,6 +250,9 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                 height: MediaQuery.of(context).size.height * 0.75,
                 padding: const EdgeInsets.all(43),
                 child: showAddPage == true
+                    // --------------------------
+                    // VIEW 1: ADD NEW GUIDELINE
+                    // --------------------------
                     ? Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -143,19 +274,16 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
                                 value: selectedCategory,
-                                isExpanded:
-                                    true, // makes the dropdown take full width
+                                isExpanded: true,
                                 onChanged: (value) {
                                   setState(() => selectedCategory = value!);
                                 },
                                 items: const [
                                   DropdownMenuItem(
                                       value: "pre_disaster",
-                                      child: Text(
-                                        "Pre-disaster",
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.bold),
-                                      )),
+                                      child: Text("Pre-disaster",
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold))),
                                   DropdownMenuItem(
                                       value: "during_disaster",
                                       child: Text("During disaster",
@@ -177,7 +305,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                           ),
                           const SizedBox(height: 20),
                           TextField(
-                            controller: textController,
+                            controller: _textController,
                             maxLines: 5,
                             style: const TextStyle(
                               fontSize: 18,
@@ -214,8 +342,8 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                   });
                                 },
                                 style: ElevatedButton.styleFrom(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(28, 18, 28, 18),
+                                  padding: const EdgeInsets.fromLTRB(
+                                      28, 18, 28, 18),
                                   backgroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(37),
@@ -234,7 +362,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                               ),
                               ElevatedButton(
                                 onPressed: () async {
-                                  final guidelineText = textController.text.trim();
+                                  final guidelineText = _textController.text.trim();
                                   if (guidelineText.isEmpty) return;
 
                                   final jsonData = {
@@ -243,11 +371,10 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                     "timestamp": DateTime.now().toIso8601String(),
                                   };
 
-                                  const String esp32IP = "192.168.4.3"; // double-check this
+                                  const String esp32IP = "192.168.4.3"; 
                                   final esp32Url = Uri.parse('http://$esp32IP/message');
 
                                   try {
-                                    // 1) Try to POST to ESP32 first (short timeout)
                                     final http.Response espResp = await http
                                         .post(
                                           esp32Url,
@@ -257,15 +384,13 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                         .timeout(const Duration(seconds: 6));
 
                                     debugPrint('ESP32 status: ${espResp.statusCode}');
-                                    debugPrint('ESP32 body: ${espResp.body}');
 
                                     if (espResp.statusCode == 200) {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(content: Text("Guideline sent to ESP32")),
                                       );
                                     } else {
-                                      // ESP responded but not OK — fallback to Firestore and inform user
-                                      debugPrint('ESP32 returned non-200. Falling back to Firestore.');
+                                      // Fallback
                                       await FirebaseFirestore.instance
                                           .collection("disaster_guidelines")
                                           .doc("guidelines")
@@ -281,9 +406,8 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                         SnackBar(content: Text("ESP32 error ${espResp.statusCode}. Saved to Firestore.")),
                                       );
                                     }
-                                  } on TimeoutException catch (te) {
-                                    debugPrint('ESP32 timeout: $te');
-                                    // fallback to Firestore
+                                  } on TimeoutException catch (_) {
+                                    // Timeout fallback
                                     await FirebaseFirestore.instance
                                         .collection("disaster_guidelines")
                                         .doc("guidelines")
@@ -298,11 +422,9 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(content: Text("ESP32 timed out. Saved to Firestore.")),
                                     );
-                                  } catch (e, st) {
-                                    // other network errors: unreachable host, socket exception, etc.
-                                    debugPrint('Error sending to ESP32: $e\n$st');
-
-                                    // fallback to Firestore
+                                  } catch (e) {
+                                    // General error fallback
+                                    debugPrint('Error: $e');
                                     try {
                                       await FirebaseFirestore.instance
                                           .collection("disaster_guidelines")
@@ -313,28 +435,23 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                         "content": guidelineText,
                                         "timestamp": FieldValue.serverTimestamp(),
                                         "source": "fallback_error",
-                                        "error": e.toString(),
                                       });
 
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text("Saved to Firestore: $e")),
+                                        const SnackBar(content: Text("Saved to Firestore (Network Error)")),
                                       );
                                     } catch (fsErr) {
                                       debugPrint('Failed to save to Firestore: $fsErr');
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text("Failed to save: $fsErr")),
-                                      );
                                     }
                                   } finally {
-                                    // Reset UI regardless of path
-                                    textController.clear();
+                                    _textController.clear();
                                     setState(() => showAddPage = false);
                                   }
                                 },
                                 style: ElevatedButton.styleFrom(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(28, 18, 28, 18),
-                                  backgroundColor: Color(0xff32ade6),
+                                  padding: const EdgeInsets.fromLTRB(
+                                      28, 18, 28, 18),
+                                  backgroundColor: const Color(0xff32ade6),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(37),
                                   ),
@@ -351,6 +468,9 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                           )
                         ],
                       )
+                    // --------------------------
+                    // VIEW 2: LIST EXISTING GUIDELINES (With Streams)
+                    // --------------------------
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -361,42 +481,14 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                           ),
                           const SizedBox(height: 10),
                           Expanded(
-                            child: StreamBuilder(
-                              stream: FirebaseFirestore.instance
-                                  .collection('disaster_guidelines')
-                                  .doc('guidelines')
-                                  .snapshots(),
-                              builder: (context, snapshot) {
-                                if (!snapshot.hasData) {
-                                  return const Center(child: CircularProgressIndicator());
-                                }
-
-                                // Fetch each category
-                                return FutureBuilder(
-                                  future: _fetchGuidelineCategories(),
-                                  builder: (context, snap) {
-                                    if (!snap.hasData) {
-                                      return const Center(child: CircularProgressIndicator());
-                                    }
-
-                                    final data = snap.data as Map<String, List<String>>;
-
-                                    final pre = data["pre_disaster"]!;
-                                    final during = data["during_disaster"]!;
-                                    final post = data["post_disaster"]!;
-
-                                    return ListView(
-                                      children: [
-                                        _buildCategory("Pre-Disaster", pre),
-                                        const SizedBox(height: 20),
-                                        _buildCategory("During Disaster", during),
-                                        const SizedBox(height: 20),
-                                        _buildCategory("Post-Disaster", post),
-                                      ],
-                                    );
-                                  },
-                                );
-                              },
+                            child: ListView(
+                              children: [
+                                _buildGuidelineStream("Pre-Disaster", "pre_disaster"),
+                                const SizedBox(height: 20),
+                                _buildGuidelineStream("During Disaster", "during_disaster"),
+                                const SizedBox(height: 20),
+                                _buildGuidelineStream("Post-Disaster", "post_disaster"),
+                              ],
                             ),
                           ),
                           const SizedBox(height: 20),
@@ -406,8 +498,8 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                               TextButton(
                                 onPressed: () => Navigator.of(context).pop(),
                                 style: ElevatedButton.styleFrom(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(28, 18, 28, 18),
+                                  padding: const EdgeInsets.fromLTRB(
+                                      28, 18, 28, 18),
                                   backgroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(37),
@@ -429,9 +521,9 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                   });
                                 },
                                 style: ElevatedButton.styleFrom(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(28, 18, 28, 18),
-                                  backgroundColor: Color(0xff32ade6),
+                                  padding: const EdgeInsets.fromLTRB(
+                                      28, 18, 28, 18),
+                                  backgroundColor: const Color(0xff32ade6),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(37),
                                   ),
@@ -456,9 +548,11 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // 🟢 MAIN SCAFFOLD BUILD
+  // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    
     return Scaffold(
         backgroundColor: const Color(0x0032ade6),
         body: Row(
@@ -506,14 +600,11 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                     color: Colors.black,
                                   ),
                                 ),
-                                const SizedBox(
-                                  height: 8,
-                                ),
+                                const SizedBox(height: 8),
                                 Container(
                                     width: 300,
                                     height: 50,
-                                    padding:
-                                        const EdgeInsets.fromLTRB(10, 0, 15, 0),
+                                    padding: const EdgeInsets.fromLTRB(10, 0, 15, 0),
                                     decoration: BoxDecoration(
                                         border: Border.all(
                                             color: Colors.black, width: 1.0),
@@ -538,27 +629,26 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                                     .textDirection),
                                       ),
                                     )),
-                                const SizedBox(
-                                  height: 8,
-                                ),
+                                const SizedBox(height: 8),
                                 ElevatedButton(
                                     onPressed: () async {
-                                      //placeholder for saving water level to IOT
                                       await FirebaseFirestore.instance
-                                      .collection('disaster_guidelines')
-                                      .doc('water_level')
-                                      .update({
-                                        'level': value,   // e.g. "High"
+                                          .collection('disaster_guidelines')
+                                          .doc('water_level')
+                                          .update({
+                                        'level': value,
                                       });
 
                                       showDialog(
                                         context: context,
                                         builder: (context) => AlertDialog(
                                           title: const Text("Water Level"),
-                                          content: const Text("Water Level successfully updated!"),
+                                          content: const Text(
+                                              "Water Level successfully updated!"),
                                           actions: [
                                             TextButton(
-                                              onPressed: () => Navigator.of(context).pop(),
+                                              onPressed: () =>
+                                                  Navigator.of(context).pop(),
                                               child: const Text("Ok"),
                                             ),
                                           ],
@@ -573,7 +663,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                           color: Colors.grey, width: 2),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(
-                                            17), // optional rounded corners
+                                            17), 
                                       ),
                                     ),
                                     child: const Text(
@@ -581,9 +671,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                       style: TextStyle(
                                           fontSize: 22, color: Colors.black),
                                     )),
-                                const SizedBox(
-                                  height: 40,
-                                ),
+                                const SizedBox(height: 40),
                                 const Text(
                                   "Disaster Preparedness Guidelines",
                                   textAlign: TextAlign.left,
@@ -594,9 +682,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                     color: Colors.black,
                                   ),
                                 ),
-                                const SizedBox(
-                                  height: 8,
-                                ),
+                                const SizedBox(height: 8),
                                 ElevatedButton(
                                     onPressed: () {
                                       showEditPopup(context);
@@ -609,7 +695,7 @@ class _MobileDashboardPageState extends State<MobileDashboardPage> {
                                           color: Colors.grey, width: 2),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(
-                                            17), // optional rounded corners
+                                            17),
                                       ),
                                     ),
                                     child: const Text(

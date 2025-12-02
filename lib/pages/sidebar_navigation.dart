@@ -118,44 +118,6 @@ class SidebarNavigation extends StatelessWidget {
             navItem("Mobile App Dashboard", Icons.dashboard, "MobileDashboard",
                 MobileDashboardPage()),
             const Spacer(),
-            // Logout button
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                width: MediaQuery.sizeOf(context).width * 0.24,
-                padding: const EdgeInsets.fromLTRB(0, 0, 0, 50),
-                child: ElevatedButton(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0XFF2294C9),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(37),
-                    ),
-                  ),
-                  child: const SizedBox(
-                    height: 41,
-                    width: 162,
-                    child: Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.logout, size: 20),
-                          SizedBox(width: 19),
-                          Text(
-                            "Log Out",
-                            style: TextStyle(
-                                fontFamily: "SFPro",
-                                fontSize: 20,
-                                color: Colors.white),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ),

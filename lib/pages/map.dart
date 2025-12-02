@@ -35,7 +35,7 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
     _initializeEvacuationMarkers();
-    _startLocationUpdates();
+    // _startLocationUpdates();
   }
 
   @override
@@ -70,9 +70,9 @@ class _MapPageState extends State<MapPage> {
                 color: Colors.white,
               ),
               child: const CircleAvatar(
-                radius: 14,
-                backgroundImage: AssetImage('assets/images/rescuer.png'),
-              ),
+                    radius: 15,
+                    backgroundImage: AssetImage('assets/images/dgfdfdsdsf2.jpg'),
+                  ),
             ),
             const SizedBox(height: 4),
                 Text(

@@ -152,7 +152,7 @@ class _RescuersPageState extends State<RescuersPage> {
                               if (context.mounted) {
                                 // Refresh the provider list
                                 Provider.of<ReceivedJSONProvider>(context, listen: false)
-                                    .fetchRescuersFromFirestore();
+                                    .fetchAllProfiles();
 
                                 Navigator.pop(context); // Close dialog
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -205,7 +205,7 @@ void _confirmDelete(String rescuerId) {
                   // 2. REFRESH PROVIDER
                   if (context.mounted) {
                     Provider.of<ReceivedJSONProvider>(context, listen: false)
-                        .fetchRescuersFromFirestore();
+                        .fetchAllProfiles();
                     
                     Navigator.pop(context); // Close Dialog
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -228,7 +228,7 @@ void _confirmDelete(String rescuerId) {
   }
   void _showSignUpSuccessDialog() async {
     final provider = Provider.of<ReceivedJSONProvider>(context, listen: false);          
-    await provider.fetchRescuersFromFirestore();
+    await provider.fetchAllProfiles();
     showDialog(
       context: context,
       barrierDismissible: false,

@@ -21,22 +21,6 @@ class OperationsPage extends StatefulWidget {
 class _OperationsPageState extends State<OperationsPage> {
   Timer? _timer;
   late ReceivedJSONProvider receivedProvider;
-
-  // final rescuers = [
-  //   "Roberto",
-  //   "John",
-  //   "Sergei",
-  //   "Joshua",
-  //   "BJ",
-  //   "Achilles",
-  //   "Paulo",
-  //   "Ben"
-  // ];
-
-  // Map<String, String> assignedRescuers = {}; // userId -> rescuerName
-  // Map<String, bool> rescuerAvailability =
-  //     {}; // rescuerName -> true (available) / false (busy)
-
   @override
   void initState() {
     super.initState();
@@ -189,10 +173,6 @@ class _OperationsPageState extends State<OperationsPage> {
         "longitude": lon,
         "timestamp": FieldValue.serverTimestamp(),
       });
-
-      // Update local state
-      
-      // Show confirmation dialog
       
     } catch (e) {
       debugPrint("Assignment error: $e");
@@ -293,32 +273,111 @@ class _OperationsPageState extends State<OperationsPage> {
 
   showDialog(
     context: context,
-    builder: (_) => AlertDialog(
-      title: const Text("Finished Rescue Operations"),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: finishedOps.isEmpty
-            ? const Text("No finished operations yet.")
-            : ListView.builder(
-                shrinkWrap: true,
-                itemCount: finishedOps.length,
-                itemBuilder: (context, index) {
-                  final op = finishedOps[index];
-                  return ListTile(
-                    title: Text("User: ${op['id']}"),
-                    subtitle: Text(
-                      "Rescuer: ${op['rescuer'] ?? 'Unknown'}",
-                    ),
-                  );
-                },
-              ),
+    builder: (_) => Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Close"),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        width: 350,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
         ),
-      ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Finished Rescue Operations",
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+
+            const SizedBox(height: 15),
+            Divider(height: 1),
+
+            const SizedBox(height: 10),
+            finishedOps.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Text(
+                      "No finished operations yet.",
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                : SizedBox(
+                    height: 300,
+                    child: ListView.builder(
+                      itemCount: finishedOps.length,
+                      itemBuilder: (context, index) {
+                        final op = finishedOps[index];
+
+                        return Container(
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blueGrey.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Victim: ${op['id']}",
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                "Rescuer: ${op['rescuer'] ?? 'Unknown'}",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              if (op["completedAt"] != null)
+                                Text(
+                                  "Completed: ${op['completedAt']}",
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+            const SizedBox(height: 20),
+
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Close"),
+              ),
+            ),
+          ],
+        ),
+      ),
     ),
   );
 }

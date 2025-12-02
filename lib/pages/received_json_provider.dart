@@ -27,42 +27,59 @@ class ReceivedJSONProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get rescuerLocations => List.unmodifiable(_rescuerLocations);
 
   // Rescuers Data...
-  final List<Map<String, String>> _rescuers = [
-    {},
-    // ... (your other rescuers)
-  ];
+  final List<Map<String, String>> _rescuers = [];
+  final List<Map<String, String>> _users = []; // The Rescuees
+  final List<Map<String, String>> _blacklisted = [];
   final Map<String, String> _assignedRescuers = {}; 
   final Map<String, bool> _rescuerAvailability = {}; 
-
-  // ----------------------- 🟢 Initialize -----------------------
+  List<Map<String, String>> get rescuers => List.unmodifiable(_rescuers);
+  List<Map<String, String>> get users => List.unmodifiable(_users);
+  List<Map<String, String>> get blacklisted => List.unmodifiable(_blacklisted);
   ReceivedJSONProvider() {
     _startPolling();
-    fetchRescuersFromFirestore();
+    fetchAllProfiles();
   }
 
-  Future<void> fetchRescuersFromFirestore() async {
-  try {
-    final snapshot = await FirebaseFirestore.instance.collection('profiles').get();
 
-    _rescuers.clear(); // Clear default hardcoded list
+  Future<void> fetchAllProfiles() async {
+    try {
+      // Get ALL profiles at once (One network call is cheaper than 3)
+      final snapshot = await FirebaseFirestore.instance.collection('profiles').get();
 
-    for (var doc in snapshot.docs) {
-      final data = doc.data();
-      if (data['role'] == 'Rescuer') {
-        _rescuers.add({
-          "name": data['Name'] ?? "Unknown", // Replace with actual username field
-          "id": doc.id,
-        });
-        _rescuerAvailability[doc.id] = true; // Mark all as available initially
+      // Clear existing lists so we don't duplicate on refresh
+      _rescuers.clear();
+      _users.clear();
+      _blacklisted.clear();
+
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final role = data['role'] ?? "Rescuee"; // Default to Rescuee if missing
+        
+        final userMap = {
+          "name": data['Name']?.toString() ?? "Unknown",
+          "phone": data['PhoneNumber']?.toString() ?? "No Phone",
+          "id": data["uid"].toString(),
+          "email": data['email']?.toString() ?? "",
+        };
+
+        // 🟢 SORT INTO LISTS
+        if (role == 'Rescuer') {
+          _rescuers.add(userMap);
+          _rescuerAvailability[doc.id] = true; 
+        } else if (role == 'Rescuee') {
+          _users.add(userMap);
+        } else if (role == 'Blacklisted') {
+          _blacklisted.add(userMap);
+        }
       }
-    }
 
-    notifyListeners();
-    debugPrint("Rescuers fetched from Firestore: ${_rescuers.length}");
-  } catch (e) {
-    debugPrint("Error fetching rescuers from Firestore: $e");
+      notifyListeners(); // Update UI
+      debugPrint("Loaded: ${_rescuers.length} Rescuers, ${_users.length} Users, ${_blacklisted.length} Blacklisted.");
+    } catch (e) {
+      debugPrint("Error fetching profiles: $e");
+    }
   }
-}
+  
   void _startPolling() {
     _pollingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _fetchSOS();
@@ -72,18 +89,12 @@ class ReceivedJSONProvider extends ChangeNotifier {
     });
   }
 
-  // ----------------------- 🟢 1. The Confirmation Logic -----------------------
-  // When a confirmation comes in, we must archive the UNIQUE identifying info
-  // (Timestamp or Raw JSON) of the active message so we don't pick it up again.
   void _handleConfirmed(Map<String, dynamic> confirmMsg) {
     final id = confirmMsg["id"];
     if (id == null) return;
 
     if (_lastConfirmedId == id) return;
     _lastConfirmedId = id;
-
-    // A. Find the ACTIVE message that corresponds to this ID
-    // We need to grab its timestamp/rawJson before we delete it.
     final existingIndex = _messages.indexWhere((m) => m["id"] == id);
     
     Map<String, dynamic> originalData = {};
@@ -100,8 +111,6 @@ class ReceivedJSONProvider extends ChangeNotifier {
     _finishedOperations.add({
       ...confirmMsg,
       "completedAt": DateTime.now().toIso8601String(),
-      // 🛑 SAVE THE FINGERPRINTS
-      // If the SOS had a timestamp, save it. If not, save the raw string.
       "sos_timestamp": originalData["timestamp"], 
       "_rawJson": originalData["_rawJson"], 
       "lat": originalData["lat"],
@@ -110,9 +119,13 @@ class ReceivedJSONProvider extends ChangeNotifier {
 
     notifyListeners();
   }
-
-  // ----------------------- 🟢 2. The Fetch SOS Logic -----------------------
   int _victimCounter = 0;
+
+  bool _isLocationClose(double? lat1, double? lon1, double? lat2, double? lon2) {
+    if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return false;
+    // 0.0001 degrees is approx 11 meters. 
+    return (lat1 - lat2).abs() < 0.0001 && (lon1 - lon2).abs() < 0.0001;
+  }
 
   Future<void> _fetchSOS() async {
     try {
@@ -121,60 +134,74 @@ class ReceivedJSONProvider extends ChangeNotifier {
 
       if (response.statusCode != 200) return;
       final rawBody = response.body.trim();
-      if (rawBody.isEmpty) return;
+      if (rawBody.isEmpty || rawBody == "{}") return;
 
       final data = jsonDecode(rawBody);
-      data["_rawJson"] = rawBody; // Attach raw body for comparison
-      
-      // 🛑 GUARD 1: TIMESTAMP / RAW JSON CHECK
-      // Check if this specific signal is already in _finishedOperations
-      final incomingTimestamp = data["timestamp"]; 
-      
-      final isAlreadyFinished = _finishedOperations.any((finishedOp) {
-        // A. If both have timestamps, match them exactly.
-        if (incomingTimestamp != null && finishedOp["sos_timestamp"] != null) {
-          return incomingTimestamp == finishedOp["sos_timestamp"];
-        }
-        // B. Fallback: Match the Raw JSON string exactly.
-        // (The ESP32 sends the exact same string until cleared)
-        return rawBody == finishedOp["_rawJson"];
-      });
+      data["_rawJson"] = rawBody; 
 
-      if (isAlreadyFinished) {
-        return; // STOP. Do not add.
+      final incomingId = data["id"] ?? "Victim";
+      final incomingTimestamp = data["timestamp"]?.toString();
+      final double? incomingLat = double.tryParse(data["lat"]?.toString() ?? "");
+      final double? incomingLon = double.tryParse(data["lon"]?.toString() ?? "");
+
+      final isFinished = _finishedOperations.any((op) => 
+          op["_rawJson"] == rawBody || 
+          (incomingTimestamp != null && op["sos_timestamp"] == incomingTimestamp)
+      );
+
+      if (isFinished) return; 
+      final isExactDuplicate = _messages.any((m) => m["_rawJson"] == rawBody);
+      if (isExactDuplicate) return;
+
+      if (incomingId != "Victim") {
+        final existingIndex = _messages.indexWhere((m) => m["id"] == incomingId);
+        if (existingIndex != -1) {
+          // Update existing named user
+          data["status"] = _messages[existingIndex]["status"]; 
+          _messages[existingIndex] = data; 
+          notifyListeners();
+        } else {
+          addMessage(data); 
+        }
+        return; 
       }
 
-      if (data["type"] == "SOS") {
-        if (data["id"] == "Victim") {
-          
-          // 🛑 GUARD 2: IS IT ALREADY ACTIVE?
-          // We check if this specific timestamp/rawJson is already in the active list
-          final activeIndex = _messages.indexWhere((m) {
-             if (incomingTimestamp != null && m["timestamp"] != null) {
-               return incomingTimestamp == m["timestamp"];
-             }
-             return rawBody == m["_rawJson"];
-          });
+      if (incomingId == "Victim") {
+        final existingVictimIndex = _messages.indexWhere((m) {
+           final mId = m["id"].toString();
+           
+           if (!mId.startsWith("Victim")) return false; // Skip named users
 
-          if (activeIndex != -1) {
-            // IT EXISTS: Update existing victim, keep the same ID
-            data["id"] = _messages[activeIndex]["id"];
-          } else {
-            // NEW: Increment counter and assign new ID
-            _victimCounter++;
-            data["id"] = "Victim $_victimCounter";
-          }
+           final mLat = double.tryParse(m["lat"]?.toString() ?? "");
+           final mLon = double.tryParse(m["lon"]?.toString() ?? "");
+           
+           return _isLocationClose(incomingLat, incomingLon, mLat, mLon);
+        });
+
+        if (existingVictimIndex != -1) {
+           // 🟢 FOUND MATCH: It's the same victim, just updated GPS.
+           // Update their data but KEEP THE OLD ID (e.g. "Victim 1")
+           data["id"] = _messages[existingVictimIndex]["id"];
+           data["status"] = _messages[existingVictimIndex]["status"];
+           
+           _messages[existingVictimIndex] = data; // Update in place
+           notifyListeners();
+           return; 
         }
-        
+
+        // If no match found, THEN it is truly a new victim.
+        _victimCounter++;
+        data["id"] = "Victim $_victimCounter";
         addMessage(data);
       }
+
     } catch (e) {
       debugPrint("Error in _fetchSOS: $e");
     }
   }
-
-  // ----------------------- 🟢 3. Add Message -----------------------
-  // Simplified: logic is now handled in _fetchSOS, so we just update/add.
+  // ---------------------------------------------------------------------------
+  // 🟢 3. Add Message (Simplified)
+  // ---------------------------------------------------------------------------
   void addMessage(Map<String, dynamic> message) {
     try {
       if (message["type"] == "CONFIRMED") {
@@ -182,24 +209,23 @@ class ReceivedJSONProvider extends ChangeNotifier {
         return;
       }
 
-      final msgId = message["id"] ?? "unknown";
+      // Default status if missing
       if (!message.containsKey("status")) {
         message["status"] = "unassigned";
       }
 
+      // Deduplication was already handled in _fetchSOS, so we just add safely.
+      final msgId = message["id"];
+      
+      // Safety check: Don't add if ID somehow already exists (race condition)
       final index = _messages.indexWhere((m) => m["id"] == msgId);
-
       if (index == -1) {
         _messages.add(message);
         notifyListeners();
       } else {
-        // Check for changes before notifying to save performance
-        final oldJson = jsonEncode(_messages[index]);
-        final newJson = jsonEncode(message);
-        if (oldJson != newJson) {
-           _messages[index] = message;
-           notifyListeners();
-        }
+        // If it exists here, it means logic fell through, just update it.
+        _messages[index] = message;
+        notifyListeners();
       }
     } catch (e) {
       debugPrint('Error in addMessage: $e');
@@ -218,7 +244,6 @@ class ReceivedJSONProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
-   List<Map<String, String>> get rescuers => List.unmodifiable(_rescuers);
    Map<String, bool> get rescuerAvailability => Map.unmodifiable(_rescuerAvailability);
    Map<String, String> get assignedRescuers => Map.unmodifiable(_assignedRescuers);
    
